@@ -2,6 +2,8 @@
 
 A high-performance, production-ready pipeline for extracting structured data from Indonesian Family Card (Kartu Keluarga) documents using computer vision and large language models.
 
+> **⚡ NEW: UV Package Manager Support** - This project now supports [uv](https://github.com/astral-sh/uv) for 10-100x faster package installation! See [UV Setup Guide](UV_SETUP.md) for details.
+
 ## 🎯 Overview
 
 KK-OCR v2 implements a three-stage pipeline that achieves >95% field-level accuracy and <2% character error rate:
@@ -89,6 +91,8 @@ OCR-KK/
 
 ## 🔧 Installation
 
+> **💡 NEW**: Now using **Pretrained U-Net** - no custom training required! See [Integration Guide](docs/INTEGRATION_GUIDE.md)
+
 ### 1. Clone Repository
 ```bash
 git clone <repository-url>
@@ -97,12 +101,16 @@ cd OCR-KK
 
 ### 2. Set Up Environment
 ```bash
-# Create virtual environment
+# With UV (recommended - faster!)
+./setup-uv.sh
+
+# Or with traditional pip
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
+
+# Install pretrained enhancer
+pip install segmentation-models-pytorch
 ```
 
 ### 3. Configure Environment Variables

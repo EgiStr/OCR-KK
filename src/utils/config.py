@@ -23,7 +23,13 @@ class Settings(BaseSettings):
     
     # Model Paths
     MODEL_PATH_YOLO: str = "models/yolo_v1_kk_map886.pt"
-    MODEL_PATH_UNET: str = "models/unet_kk_cleaner_v1.pt"
+    MODEL_PATH_UNET: str = "models/unet_kk_cleaner_v1.pt"  # Legacy (for custom trained)
+    
+    # Enhancement Configuration (Pretrained U-Net)
+    USE_PRETRAINED_ENHANCER: bool = True  # Use pretrained (no training needed!)
+    ENHANCEMENT_MODEL: str = "Unet"  # Unet, FPN, Linknet, DeepLabV3Plus, etc.
+    ENHANCEMENT_ENCODER: str = "resnet34"  # resnet34, efficientnet-b0, mobilenet_v2, etc.
+    ENHANCEMENT_METHOD: str = "hybrid"  # hybrid, classical, deep
     
     # VLM Configuration
     GEMINI_API_KEY: str
@@ -90,6 +96,14 @@ class Settings(BaseSettings):
     def get_unet_device(self) -> str:
         """Get U-Net device (cuda or cpu)"""
         if self.ENABLE_GPU and self.UNET_DEVICE == "cuda":
+            import torch
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        return "cpu"
+    
+    @property
+    def DEVICE(self) -> str:
+        """Get unified device for all models"""
+        if self.ENABLE_GPU:
             import torch
             return "cuda" if torch.cuda.is_available() else "cpu"
         return "cpu"

@@ -24,6 +24,19 @@ models:
     input_size: 640
     device: "cuda"
     
+  # Enhancement with Pretrained U-Net (No Training Required!)
+  enhancement:
+    use_pretrained: true  # Use pretrained weights from ImageNet
+    model: "Unet"  # Unet, UnetPlusPlus, FPN, PSPNet, DeepLabV3Plus, etc.
+    encoder: "resnet34"  # resnet34 (balanced), efficientnet-b0 (fast), mobilenet_v2 (fastest)
+    encoder_weights: "imagenet"
+    method: "hybrid"  # hybrid (recommended), classical (fastest), deep
+    input_size: 256
+    batch_size: 8
+    device: "cuda"
+    fallback_classical: true  # Use classical-only if GPU unavailable
+    
+  # Legacy U-Net (for custom training)
   unet:
     path: "models/unet_kk_cleaner_v1.pt"
     input_size: 256
@@ -32,7 +45,7 @@ models:
     
   vlm:
     provider: "gemini"
-    model: "gemini-1.5-pro"
+    model: "gemini-2.5-pro"  # Updated from gemini-1.5-pro (deprecated)
     temperature: 0.1
     max_output_tokens: 8192
     timeout: 900

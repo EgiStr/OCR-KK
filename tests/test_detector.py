@@ -3,10 +3,14 @@ Test YOLO Detector Module
 """
 
 import pytest
+import os
 from PIL import Image
 import numpy as np
 
 from src.modules.detector import YOLODetector, Detection
+from src.utils.config import get_settings
+
+settings = get_settings()
 
 
 @pytest.fixture
@@ -39,14 +43,20 @@ def test_detection_class():
 
 # Note: Full YOLODetector tests require model file
 # Add integration tests once model is available
-@pytest.mark.skip(reason="Requires YOLO model file")
+@pytest.mark.skipif(
+    not os.path.exists(settings.MODEL_PATH_YOLO),
+    reason="Requires YOLO model file"
+)
 def test_yolo_detector_init():
     """Test YOLO detector initialization"""
     detector = YOLODetector()
     assert detector.model is not None
 
 
-@pytest.mark.skip(reason="Requires YOLO model file")
+@pytest.mark.skipif(
+    not os.path.exists(settings.MODEL_PATH_YOLO),
+    reason="Requires YOLO model file"
+)
 def test_yolo_detection(dummy_image):
     """Test YOLO detection"""
     detector = YOLODetector()

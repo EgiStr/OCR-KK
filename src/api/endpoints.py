@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from src.api.models import KKExtractionResponse, ErrorResponse
 from src.modules.detector import YOLODetector
-from src.modules.enhancer import UNetEnhancer
+from src.modules.enhancer_pretrained import PretrainedUNetEnhancer
 from src.modules.extractor import VLMExtractor
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
@@ -33,11 +33,16 @@ async def get_detector(request: Request) -> YOLODetector:
 
 
 # Dependency to get or create enhancer
-async def get_enhancer(request: Request) -> UNetEnhancer:
-    """Get U-Net enhancer instance"""
+async def get_enhancer(request: Request) -> PretrainedUNetEnhancer:
+    """Get Pretrained U-Net enhancer instance"""
     if hasattr(request.app.state, 'enhancer'):
         return request.app.state.enhancer
-    return UNetEnhancer()
+    # Fallback: create new instance if not pre-loaded
+    return PretrainedUNetEnhancer(
+        encoder_name=settings.ENHANCEMENT_ENCODER,
+        encoder_weights="imagenet",
+        device=settings.DEVICE
+    )
 
 
 # Dependency to get or create extractor
@@ -76,7 +81,7 @@ async def get_extractor(request: Request) -> VLMExtractor:
 async def extract_kk(
     file: UploadFile = File(..., description="KK document image"),
     detector: YOLODetector = Depends(get_detector),
-    enhancer: UNetEnhancer = Depends(get_enhancer),
+    enhancer: PretrainedUNetEnhancer = Depends(get_enhancer),
     extractor: VLMExtractor = Depends(get_extractor)
 ) -> KKExtractionResponse:
     """
@@ -132,29 +137,62 @@ async def extract_kk(
             metrics_manager.record_detection_time(detection_time)
             metrics_manager.record_detections(len(detections))
         
-        # 4. U-Net Enhancement
+        # 4. Image Enhancement (Pretrained U-Net)
         enhancement_start = time.time()
-        enhanced_crops = enhancer.enhance_batch(detections)
+        
+        # Crop images from detections
+        from src.utils.validators import crop_with_bbox
+        cropped_images = [
+            crop_with_bbox(image, det.bbox) for det in detections
+        ]
+        
+        # Enhance with pretrained U-Net (no training required!)
+        enhancement_method = getattr(settings, 'ENHANCEMENT_METHOD', 'hybrid')
+        enhanced_crops = enhancer.enhance_batch(
+            images=cropped_images,
+            detections=detections,
+            method=enhancement_method  # hybrid, classical, or deep
+        )
         enhancement_time = time.time() - enhancement_start
         
         logger.info(
-            "U-Net enhancement completed",
+            "Pretrained U-Net enhancement completed",
             extra={
                 "request_id": request_id,
                 "num_enhanced": len(enhanced_crops),
-                "enhancement_time_ms": int(enhancement_time * 1000)
+                "enhancement_time_ms": int(enhancement_time * 1000),
+                "method": enhancement_method
             }
         )
         
         if settings.ENABLE_METRICS:
             metrics_manager.record_enhancement_time(enhancement_time)
         
+        # Convert PretrainedUNetEnhancer EnhancedCrop to extractor-compatible format
+        # extractor.py expects EnhancedCrop with bbox attribute
+        from src.modules.enhancer import EnhancedCrop as ExtractorEnhancedCrop
+        
+        extractor_crops = []
+        for enh_crop in enhanced_crops:
+            # Get bbox from detection - it's already a list [x1, y1, x2, y2]
+            det = enh_crop.detection
+            bbox = [int(x) for x in det.bbox]
+            
+            # Create extractor-compatible EnhancedCrop
+            extractor_crop = ExtractorEnhancedCrop(
+                original=enh_crop.original_image,
+                enhanced=enh_crop.enhanced_image,
+                bbox=bbox,
+                class_name=det.class_name
+            )
+            extractor_crops.append(extractor_crop)
+        
         # 5. VLM Extraction
         extraction_start = time.time()
         result = await extractor.extract(
             original_image=image,
             detections=detections,
-            enhanced_crops=enhanced_crops,
+            enhanced_crops=extractor_crops,
             source_filename=file.filename
         )
         extraction_time = time.time() - extraction_start

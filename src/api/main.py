@@ -39,15 +39,23 @@ async def lifespan(app: FastAPI):
     # Pre-load models (optional - can be lazy loaded)
     try:
         from src.modules.detector import YOLODetector
-        from src.modules.enhancer import UNetEnhancer
+        from src.modules.enhancer_pretrained import PretrainedUNetEnhancer
         from src.modules.extractor import VLMExtractor
         
         logger.info("Pre-loading models...")
         # Store in app state for reuse
         app.state.detector = YOLODetector()
-        app.state.enhancer = UNetEnhancer()
+        
+        # Use Pretrained U-Net (no training required!)
+        app.state.enhancer = PretrainedUNetEnhancer(
+            model_name=settings.ENHANCEMENT_MODEL,
+            encoder_name=settings.ENHANCEMENT_ENCODER,
+            encoder_weights="imagenet",
+            device=settings.DEVICE
+        )
+        
         app.state.extractor = VLMExtractor()
-        logger.info("Models loaded successfully")
+        logger.info("Models loaded successfully (using pretrained U-Net)")
     except Exception as e:
         logger.error(f"Failed to pre-load models: {str(e)}")
         # Continue anyway - will load on first request

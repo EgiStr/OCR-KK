@@ -22,9 +22,12 @@ PII_FIELDS = [
 ]
 
 
-def scrub_pii(event_dict: Dict[str, Any]) -> Dict[str, Any]:
+def scrub_pii(logger, method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
     Remove PII from log event
+    
+    This is a structlog processor that scrubs PII fields from logs.
+    Signature: (logger, method_name, event_dict) -> event_dict
     """
     if not settings.ENABLE_PII_SCRUBBING:
         return event_dict
