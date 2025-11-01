@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "KK Extraction Response",
+  "description": "Schema for Kartu Keluarga extraction response",
+  "type": "object",
+  "required": ["metadata", "header", "anggota_keluarga"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": ["processing_timestamp", "model_version_yolo", "model_version_unet", "model_version_vlm", "source_file"],
+      "properties": {
+        "processing_timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of processing"
+        },
+        "model_version_yolo": {
+          "type": "string",
+          "description": "YOLO model version"
+        },
+        "model_version_unet": {
+          "type": "string",
+          "description": "U-Net model version"
+        },
+        "model_version_vlm": {
+          "type": "string",
+          "description": "VLM model name/version"
+        },
+        "source_file": {
+          "type": "string",
+          "description": "Original filename"
+        }
+      }
+    },
+    "header": {
+      "type": "object",
+      "properties": {
+        "no_kk": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]{16}$",
+          "description": "16-digit family card number"
+        },
+        "kepala_keluarga": {
+          "type": ["string", "null"],
+          "description": "Head of family name"
+        },
+        "alamat": {
+          "type": ["string", "null"],
+          "description": "Address"
+        },
+        "rt": {
+          "type": ["string", "null"],
+          "description": "RT number"
+        },
+        "rw": {
+          "type": ["string", "null"],
+          "description": "RW number"
+        },
+        "desa": {
+          "type": ["string", "null"],
+          "description": "Village/Kelurahan"
+        },
+        "kecamatan": {
+          "type": ["string", "null"],
+          "description": "District"
+        },
+        "kabupaten_kota": {
+          "type": ["string", "null"],
+          "description": "Regency/City"
+        },
+        "provinsi": {
+          "type": ["string", "null"],
+          "description": "Province"
+        },
+        "kode_pos": {
+          "type": ["string", "null"],
+          "description": "Postal code"
+        },
+        "tanggal_pembuatan": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]{2}-[0-9]{2}-[0-9]{4}$",
+          "description": "Creation date (DD-MM-YYYY)"
+        }
+      }
+    },
+    "anggota_keluarga": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["nama_lengkap", "nik", "jenis_kelamin"],
+        "properties": {
+          "nama_lengkap": {
+            "type": "string",
+            "description": "Full name"
+          },
+          "nik": {
+            "type": "string",
+            "pattern": "^[0-9]{16}$",
+            "description": "16-digit NIK"
+          },
+          "jenis_kelamin": {
+            "type": "string",
+            "enum": ["LAKI-LAKI", "PEREMPUAN"],
+            "description": "Gender"
+          },
+          "tempat_lahir": {
+            "type": ["string", "null"],
+            "description": "Place of birth"
+          },
+          "tanggal_lahir": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9]{2}-[0-9]{2}-[0-9]{4}$",
+            "description": "Date of birth (DD-MM-YYYY)"
+          },
+          "agama": {
+            "type": ["string", "null"],
+            "description": "Religion"
+          },
+          "pendidikan": {
+            "type": ["string", "null"],
+            "description": "Education level"
+          },
+          "jenis_pekerjaan": {
+            "type": ["string", "null"],
+            "description": "Occupation"
+          },
+          "status_perkawinan": {
+            "type": ["string", "null"],
+            "description": "Marital status"
+          },
+          "status_keluarga": {
+            "type": ["string", "null"],
+            "description": "Family status"
+          },
+          "kewarganegaraan": {
+            "type": ["string", "null"],
+            "description": "Citizenship"
+          },
+          "no_paspor": {
+            "type": ["string", "null"],
+            "description": "Passport number"
+          },
+          "no_KITAP": {
+            "type": ["string", "null"],
+            "description": "KITAP number"
+          },
+          "nama_ayah": {
+            "type": ["string", "null"],
+            "description": "Father's name"
+          },
+          "nama_ibu": {
+            "type": ["string", "null"],
+            "description": "Mother's name"
+          },
+          "golongan_darah": {
+            "type": ["string", "null"],
+            "description": "Blood type"
+          },
+          "tanggal_perkawinan": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9]{2}-[0-9]{2}-[0-9]{4}$",
+            "description": "Marriage date (DD-MM-YYYY)"
+          }
+        }
+      }
+    },
+    "footer": {
+      "type": ["object", "null"],
+      "properties": {
+        "tanda_tangan_kepala_keluarga": {
+          "type": ["object", "null"],
+          "properties": {
+            "terdeteksi": {
+              "type": "boolean",
+              "description": "Whether signature was detected"
+            },
+            "text": {
+              "type": ["string", "null"],
+              "description": "Signature text if available"
+            }
+          },
+          "required": ["terdeteksi"]
+        },
+        "tanda_tangan_pejabat": {
+          "type": ["object", "null"],
+          "properties": {
+            "terdeteksi": {
+              "type": "boolean",
+              "description": "Whether signature was detected"
+            },
+            "text": {
+              "type": ["string", "null"],
+              "description": "Signature text if available"
+            }
+          },
+          "required": ["terdeteksi"]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,107 @@
+# KK-OCR v2 Configuration
+
+# Application Settings
+application:
+  name: "KK-OCR v2"
+  version: "2.1.0"
+  description: "Indonesian Family Card OCR Pipeline"
+
+# API Settings
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  reload: false
+  log_level: "info"
+  cors_origins:
+    - "*"
+
+# Model Settings
+models:
+  yolo:
+    path: "models/yolo_v1_kk_map886.pt"
+    confidence_threshold: 0.7
+    input_size: 640
+    device: "cuda"
+    
+  unet:
+    path: "models/unet_kk_cleaner_v1.pt"
+    input_size: 256
+    batch_size: 8
+    device: "cuda"
+    
+  vlm:
+    provider: "gemini"
+    model: "gemini-1.5-pro"
+    temperature: 0.1
+    max_output_tokens: 8192
+    timeout: 900
+    max_retries: 3
+
+# Field Classes (22 classes)
+field_classes:
+  header:
+    - no_kk
+    - kepala_keluarga
+    - alamat
+    - rt
+    - rw
+    - desa_kelurahan
+    - kecamatan
+    - kabupaten_kota
+    - provinsi
+    - kode_pos
+    - tanggal_pembuatan
+    
+  family_member:
+    - nik
+    - nama_lengkap
+    - jenis_kelamin
+    - tempat_lahir
+    - tanggal_lahir
+    - agama
+    - pendidikan
+    - pekerjaan
+    - status_perkawinan
+    - status_keluarga
+    - kewarganegaraan
+
+# Performance Settings
+performance:
+  max_file_size_mb: 10
+  max_processing_time_seconds: 120
+  enable_gpu: true
+  enable_model_caching: true
+
+# Logging Settings
+logging:
+  level: "INFO"
+  format: "json"
+  enable_pii_scrubbing: true
+  output_file: "logs/kk-ocr.log"
+  max_file_size_mb: 100
+  backup_count: 5
+
+# Monitoring Settings
+monitoring:
+  enable_metrics: true
+  metrics_port: 9090
+  enable_tracing: false
+  enable_profiling: false
+
+# Security Settings
+security:
+  enable_authentication: true
+  token_expire_minutes: 30
+  allowed_file_types:
+    - "image/jpeg"
+    - "image/png"
+    - "application/pdf"
+  max_upload_size_mb: 10
+
+# Storage Settings (Optional)
+storage:
+  type: "local"  # local, s3, gcs
+  local_path: "data/uploads"
+  retention_days: 7
+  enable_cleanup: true

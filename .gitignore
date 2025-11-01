@@ -1,0 +1,107 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Models (large files)
+models/*.pt
+models/*.pth
+models/*.onnx
+models/*.trt
+*.weights
+
+# Data
+data/raw/*
+data/processed/*
+data/annotations/*
+data/uploads/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/annotations/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# Test Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# DVC
+.dvc/cache
+.dvc/tmp
+
+# Docker
+.dockerignore
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+
+# Model Outputs
+outputs/
+runs/
+experiments/
+
+# Monitoring
+prometheus_data/
+
+# ML Artifacts
+wandb/
+mlruns/
+checkpoints/
+*.ckpt
+
+# System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
