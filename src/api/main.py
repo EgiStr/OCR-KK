@@ -4,12 +4,14 @@ KK-OCR v2 Main Application
 """
 
 import time
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Dict
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response
 
@@ -90,6 +92,12 @@ app.add_middleware(
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(AuthenticationMiddleware)
 
+# Mount static files for UI
+static_dir = Path(__file__).parent.parent.parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    logger.info(f"Static files mounted from: {static_dir}")
+
 
 # Request timing middleware
 @app.middleware("http")
@@ -114,6 +122,25 @@ async def add_process_time_header(request: Request, call_next):
 
 # Include API routes
 app.include_router(router, prefix="/v2")
+
+
+# Root endpoint - serve HTML UI
+@app.get("/", tags=["UI"])
+async def root():
+    """
+    Serve the web UI
+    """
+    from fastapi.responses import FileResponse
+    static_dir = Path(__file__).parent.parent.parent / "static"
+    index_file = static_dir / "index.html"
+    
+    if index_file.exists():
+        return FileResponse(index_file)
+    else:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "UI not found. Please ensure static files are present."}
+        )
 
 
 # Health check endpoint

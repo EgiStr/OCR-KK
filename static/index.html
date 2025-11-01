@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KK-OCR v2 - Indonesian Family Card OCR</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <!-- SheetJS for Excel export -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="40" height="40" rx="8" fill="#4F46E5"/>
+                    <path d="M12 12H28V28H12V12Z" stroke="white" stroke-width="2"/>
+                    <path d="M16 16H24M16 20H24M16 24H20" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <h1>KK-OCR v2</h1>
+            </div>
+            <div class="subtitle">Ekstraksi Data Kartu Keluarga dengan AI</div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📄</div>
+                    <h2>Upload Kartu Keluarga</h2>
+                    <p>Drag & drop gambar KK atau klik untuk memilih file</p>
+                    <p class="file-info">Mendukung: JPEG, PNG, PDF (Max 10MB)</p>
+                    <input type="file" id="fileInput" accept="image/jpeg,image/png,application/pdf" hidden>
+                    <button class="btn-primary" id="selectFileBtn">Pilih File</button>
+                </div>
+
+                <!-- Preview Section -->
+                <div class="preview-section" id="previewSection" style="display: none;">
+                    <div class="preview-header">
+                        <h3>Preview Gambar</h3>
+                        <button class="btn-secondary" id="changeFileBtn">Ganti File</button>
+                    </div>
+                    <div class="preview-image">
+                        <img id="previewImg" src="" alt="Preview">
+                    </div>
+                    <div class="file-details" id="fileDetails"></div>
+                    <button class="btn-primary btn-large" id="processBtn">
+                        <span class="btn-icon">🚀</span>
+                        Proses Ekstraksi Data
+                    </button>
+                </div>
+            </section>
+
+            <!-- Processing Section -->
+            <section class="processing-section" id="processSection" style="display: none;">
+                <div class="processing-card">
+                    <div class="spinner"></div>
+                    <h3>Memproses Dokumen...</h3>
+                    <p id="processingStatus">Mengunggah file...</p>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressBar"></div>
+                    </div>
+                    <div class="processing-steps">
+                        <div class="step" id="step1">
+                            <span class="step-icon">⏳</span>
+                            <span class="step-text">YOLO Detection</span>
+                        </div>
+                        <div class="step" id="step2">
+                            <span class="step-icon">⏳</span>
+                            <span class="step-text">U-Net Enhancement</span>
+                        </div>
+                        <div class="step" id="step3">
+                            <span class="step-icon">⏳</span>
+                            <span class="step-text">VLM Extraction</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection" style="display: none;">
+                <div class="results-header">
+                    <h2>📊 Hasil Ekstraksi Data</h2>
+                    <div class="results-actions">
+                        <button class="btn-secondary" id="downloadJsonBtn">
+                            <span class="btn-icon">💾</span>
+                            Download JSON
+                        </button>
+                        <button class="btn-secondary" id="exportExcelBtn">
+                            <span class="btn-icon">📊</span>
+                            Export Excel
+                        </button>
+                        <button class="btn-secondary" id="copyJsonBtn">
+                            <span class="btn-icon">📋</span>
+                            Copy JSON
+                        </button>
+                        <button class="btn-primary" id="newUploadBtn">
+                            <span class="btn-icon">🔄</span>
+                            Upload Baru
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Metadata -->
+                <div class="result-card">
+                    <h3>ℹ️ Metadata</h3>
+                    <div class="metadata-grid" id="metadataGrid"></div>
+                </div>
+
+                <!-- Header KK -->
+                <div class="result-card">
+                    <h3>📋 Informasi Kartu Keluarga</h3>
+                    <div class="data-grid" id="headerGrid"></div>
+                </div>
+
+                <!-- Family Members -->
+                <div class="result-card">
+                    <h3>👥 Anggota Keluarga (<span id="memberCount">0</span>)</h3>
+                    <div id="membersContainer"></div>
+                </div>
+
+                <!-- Footer -->
+                <div class="result-card">
+                    <h3>📝 Informasi Tambahan</h3>
+                    <div class="data-grid" id="footerGrid"></div>
+                </div>
+
+                <!-- Raw JSON -->
+                <div class="result-card">
+                    <h3>🔍 Raw JSON Response</h3>
+                    <pre id="rawJson"></pre>
+                </div>
+            </section>
+
+            <!-- Error Section -->
+            <section class="error-section" id="errorSection" style="display: none;">
+                <div class="error-card">
+                    <div class="error-icon">❌</div>
+                    <h3>Terjadi Kesalahan</h3>
+                    <p id="errorMessage"></p>
+                    <button class="btn-primary" id="retryBtn">
+                        <span class="btn-icon">🔄</span>
+                        Coba Lagi
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>KK-OCR v2.1.0 | Powered by YOLO + U-Net + Gemini AI</p>
+            <p>© 2025 Indonesian Family Card OCR</p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

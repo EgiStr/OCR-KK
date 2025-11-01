@@ -29,12 +29,15 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     
     # Public endpoints that don't require authentication
     PUBLIC_PATHS = [
+        "/",  # Homepage UI
         "/health",
         "/ready",
         "/metrics",
         "/docs",
         "/redoc",
-        "/openapi.json"
+        "/openapi.json",
+        "/static",  # Static files (CSS, JS, images)
+        "/favicon.ico"
     ]
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
