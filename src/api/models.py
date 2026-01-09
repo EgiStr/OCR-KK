@@ -210,3 +210,95 @@ class ErrorResponse(BaseModel):
                 "timestamp": "2025-11-01T12:35:02Z"
             }
         }
+
+
+# ==================== Batch Processing Models ====================
+
+class BatchSummary(BaseModel):
+    """Summary of batch processing results"""
+    total_files: int = Field(..., description="Total number of files processed")
+    successful: int = Field(..., description="Number of successful extractions")
+    failed: int = Field(..., description="Number of failed extractions")
+    total_time_seconds: float = Field(..., description="Total processing time in seconds")
+    average_time_per_file: float = Field(..., description="Average time per file in seconds")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total_files": 10,
+                "successful": 9,
+                "failed": 1,
+                "total_time_seconds": 25.5,
+                "average_time_per_file": 2.55
+            }
+        }
+
+
+class KKExtractionResult(BaseModel):
+    """Individual extraction result within a batch"""
+    filename: str = Field(..., description="Original filename")
+    status: str = Field(..., description="Extraction status: success, failed")
+    processing_time_seconds: float = Field(..., description="Processing time for this file")
+    data: Optional[KKExtractionResponse] = Field(None, description="Extracted data if successful")
+    error: Optional[str] = Field(None, description="Error message if failed")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "filename": "kk_001.jpg",
+                "status": "success",
+                "processing_time_seconds": 2.3,
+                "data": None,
+                "error": None
+            }
+        }
+
+
+class BatchExtractionResponse(BaseModel):
+    """Response for batch extraction request"""
+    job_id: str = Field(..., description="Unique job identifier")
+    status: str = Field(..., description="Overall status: completed, partial, failed")
+    results: List[KKExtractionResult] = Field(..., description="List of extraction results")
+    summary: BatchSummary = Field(..., description="Batch processing summary")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "job_id": "batch_1704115200_abc123",
+                "status": "completed",
+                "results": [],
+                "summary": {
+                    "total_files": 5,
+                    "successful": 5,
+                    "failed": 0,
+                    "total_time_seconds": 12.5,
+                    "average_time_per_file": 2.5
+                }
+            }
+        }
+
+
+class BatchJobStatus(BaseModel):
+    """Status of an async batch job"""
+    job_id: str = Field(..., description="Unique job identifier")
+    status: str = Field(..., description="Job status: pending, processing, completed, failed")
+    progress: int = Field(..., description="Progress percentage (0-100)")
+    total_files: int = Field(..., description="Total files in batch")
+    processed_files: int = Field(..., description="Files processed so far")
+    created_at: str = Field(..., description="Job creation timestamp")
+    completed_at: Optional[str] = Field(None, description="Job completion timestamp")
+    result: Optional[BatchExtractionResponse] = Field(None, description="Results when completed")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "job_id": "batch_1704115200_abc123",
+                "status": "processing",
+                "progress": 60,
+                "total_files": 10,
+                "processed_files": 6,
+                "created_at": "2025-11-01T12:35:00Z",
+                "completed_at": None,
+                "result": None
+            }
+        }

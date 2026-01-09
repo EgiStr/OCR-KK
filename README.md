@@ -135,7 +135,7 @@ cp .env.example .env
 ### Local Development
 ```bash
 # Run with uvicorn
-uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+export GEMINI_MODEL=gemini-2.5-pro && uv run uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Docker Deployment

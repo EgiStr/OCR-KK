@@ -238,6 +238,213 @@ class VLMExtractor:
             logger.error(f"VLM extraction failed: {str(e)}", exc_info=True)
             raise RuntimeError(f"VLM extraction failed: {str(e)}")
     
+    async def extract_direct(
+        self,
+        image: Image.Image,
+        source_filename: str
+    ) -> KKExtractionResponse:
+        """
+        Extract structured data directly from image without detection.
+        Used by VLM-only pipeline.
+        
+        Args:
+            image: Original KK image
+            source_filename: Original filename
+            
+        Returns:
+            KKExtractionResponse with structured data
+        """
+        if self.model is None:
+            raise RuntimeError("Gemini model not configured")
+        
+        try:
+            logger.info("Starting direct VLM extraction (no detection)")
+            
+            # Simplified prompt for direct extraction
+            direct_prompt = """You are an expert data extraction specialist for Indonesian Family Card (Kartu Keluarga/KK) documents.
+
+Analyze this document image and extract all data into structured JSON format.
+
+Your task:
+1. Identify the document type and structure
+2. Extract header information (No. KK, kepala keluarga, alamat, etc.)
+3. Extract all family members from the table rows
+4. Extract footer information (signatures)
+
+""" + EXTRACTION_PROMPT
+            
+            # Prepare single image for Gemini
+            images = [
+                {
+                    "mime_type": "image/png",
+                    "data": self._image_to_bytes(image)
+                }
+            ]
+            
+            # Call Gemini API
+            response_text = await self._call_gemini_with_retry(
+                prompt=direct_prompt,
+                images=images
+            )
+            
+            # Parse JSON response
+            extracted_data = self._parse_response(response_text, source_filename)
+            
+            logger.info("Direct VLM extraction completed successfully")
+            
+            return extracted_data
+            
+        except Exception as e:
+            logger.error(f"Direct VLM extraction failed: {str(e)}", exc_info=True)
+            raise RuntimeError(f"Direct VLM extraction failed: {str(e)}")
+    
+    async def extract_with_detections(
+        self,
+        image: Image.Image,
+        detections: List[Detection],
+        source_filename: str
+    ) -> KKExtractionResponse:
+        """
+        Extract structured data using YOLO detections for context.
+        Used by YOLO+VLM pipeline (recommended).
+        
+        Args:
+            image: Original KK image
+            detections: YOLO detection results with bounding boxes
+            source_filename: Original filename
+            
+        Returns:
+            KKExtractionResponse with structured data
+        """
+        if self.model is None:
+            raise RuntimeError("Gemini model not configured")
+        
+        try:
+            logger.info(
+                "Starting VLM extraction with detection context",
+                extra={"num_detections": len(detections)}
+            )
+            
+            # Create annotated image with bounding boxes
+            annotated_image = self._annotate_image_with_detections(image, detections)
+            
+            # Create detection context for prompt
+            detection_context = self._create_detection_context(detections)
+            
+            # Enhanced prompt with detection info
+            detection_prompt = f"""{SYSTEM_PROMPT}
+
+DETECTION RESULTS:
+The following fields have been detected in the document:
+{detection_context}
+
+Use these detections to help associate data with correct rows.
+
+{EXTRACTION_PROMPT}"""
+            
+            # Prepare images: original + annotated
+            images = [
+                {
+                    "mime_type": "image/png",
+                    "data": self._image_to_bytes(image)
+                },
+                {
+                    "mime_type": "image/png",
+                    "data": self._image_to_bytes(annotated_image)
+                }
+            ]
+            
+            # Call Gemini API
+            response_text = await self._call_gemini_with_retry(
+                prompt=detection_prompt,
+                images=images
+            )
+            
+            # Parse JSON response
+            extracted_data = self._parse_response(response_text, source_filename)
+            
+            logger.info("VLM extraction with detections completed successfully")
+            
+            return extracted_data
+            
+        except Exception as e:
+            logger.error(f"VLM extraction with detections failed: {str(e)}", exc_info=True)
+            raise RuntimeError(f"VLM extraction with detections failed: {str(e)}")
+    
+    def _annotate_image_with_detections(
+        self,
+        image: Image.Image,
+        detections: List[Detection]
+    ) -> Image.Image:
+        """
+        Draw bounding boxes and labels on image for VLM context.
+        
+        Args:
+            image: Original image
+            detections: List of detections
+            
+        Returns:
+            Annotated PIL Image
+        """
+        from PIL import ImageDraw, ImageFont
+        
+        # Create a copy to draw on
+        annotated = image.copy()
+        draw = ImageDraw.Draw(annotated)
+        
+        # Try to use a font, fallback to default
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+        except:
+            font = ImageFont.load_default()
+        
+        # Color palette for different classes
+        colors = [
+            "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF",
+            "#FFA500", "#800080", "#008080", "#FFD700", "#DC143C", "#00CED1"
+        ]
+        
+        for i, det in enumerate(detections):
+            x1, y1, x2, y2 = [int(c) for c in det.bbox]
+            color = colors[i % len(colors)]
+            
+            # Draw rectangle
+            draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
+            
+            # Draw label
+            label = f"{det.class_name}"
+            draw.text((x1, y1 - 15), label, fill=color, font=font)
+        
+        return annotated
+    
+    def _create_detection_context(self, detections: List[Detection]) -> str:
+        """
+        Create textual context from detections for the prompt.
+        
+        Args:
+            detections: List of detections
+            
+        Returns:
+            Formatted string with detection info
+        """
+        if not detections:
+            return "No specific fields detected."
+        
+        # Group by class
+        class_groups = {}
+        for det in detections:
+            if det.class_name not in class_groups:
+                class_groups[det.class_name] = []
+            class_groups[det.class_name].append(det)
+        
+        lines = []
+        for class_name, dets in sorted(class_groups.items()):
+            positions = [f"({int(d.bbox[0])},{int(d.bbox[1])})" for d in dets]
+            lines.append(f"- {class_name}: {len(dets)} detected at positions {', '.join(positions)}")
+        
+        return "\n".join(lines)
+
+    
     async def _call_gemini_with_retry(
         self,
         prompt: str,

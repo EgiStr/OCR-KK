@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     ENHANCEMENT_ENCODER: str = "resnet34"  # resnet34, efficientnet-b0, mobilenet_v2, etc.
     ENHANCEMENT_METHOD: str = "hybrid"  # hybrid, classical, deep
     
+    # Pipeline Mode Configuration
+    PIPELINE_MODE: str = "yolo_vlm"  # "vlm_only", "yolo_vlm", "full"
+    SKIP_ENHANCEMENT: bool = True  # Skip U-Net enhancement by default
+    
+    # Batch Processing Configuration
+    BATCH_MAX_FILES: int = 20  # Maximum files per batch request
+    BATCH_MAX_WORKERS: int = 4  # Parallel workers for batch processing
+    BATCH_TIMEOUT_SECONDS: int = 300  # Timeout for batch job
+    GEMINI_RATE_LIMIT_PER_MINUTE: int = 15  # Rate limit for Gemini API calls
+    
     # VLM Configuration
     GEMINI_API_KEY: str
     GEMINI_MODEL: str = "gemini-1.5-pro"

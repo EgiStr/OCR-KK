@@ -16,6 +16,7 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response
 
 from src.api.endpoints import router
+from src.api.batch_endpoints import router as batch_router
 from src.api.middleware import AuthenticationMiddleware, LoggingMiddleware
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
@@ -41,23 +42,31 @@ async def lifespan(app: FastAPI):
     # Pre-load models (optional - can be lazy loaded)
     try:
         from src.modules.detector import YOLODetector
-        from src.modules.enhancer_pretrained import PretrainedUNetEnhancer
         from src.modules.extractor import VLMExtractor
         
-        logger.info("Pre-loading models...")
-        # Store in app state for reuse
-        app.state.detector = YOLODetector()
+        logger.info(f"Pre-loading models (pipeline mode: {settings.PIPELINE_MODE})...")
         
-        # Use Pretrained U-Net (no training required!)
-        app.state.enhancer = PretrainedUNetEnhancer(
-            model_name=settings.ENHANCEMENT_MODEL,
-            encoder_name=settings.ENHANCEMENT_ENCODER,
-            encoder_weights="imagenet",
-            device=settings.DEVICE
-        )
+        # Store in app state for reuse
+        # Only load YOLO if not using VLM-only mode
+        if settings.PIPELINE_MODE != "vlm_only":
+            app.state.detector = YOLODetector()
+            logger.info("YOLO detector loaded")
+        
+        # Only load enhancer if using full pipeline mode
+        if settings.PIPELINE_MODE == "full" and not settings.SKIP_ENHANCEMENT:
+            from src.modules.enhancer_pretrained import PretrainedUNetEnhancer
+            app.state.enhancer = PretrainedUNetEnhancer(
+                model_name=settings.ENHANCEMENT_MODEL,
+                encoder_name=settings.ENHANCEMENT_ENCODER,
+                encoder_weights="imagenet",
+                device=settings.DEVICE
+            )
+            logger.info("Pretrained U-Net enhancer loaded")
+        else:
+            logger.info("Skipping U-Net enhancer (SKIP_ENHANCEMENT=True or yolo_vlm mode)")
         
         app.state.extractor = VLMExtractor()
-        logger.info("Models loaded successfully (using pretrained U-Net)")
+        logger.info(f"Models loaded successfully (mode: {settings.PIPELINE_MODE})")
     except Exception as e:
         logger.error(f"Failed to pre-load models: {str(e)}")
         # Continue anyway - will load on first request
@@ -122,6 +131,7 @@ async def add_process_time_header(request: Request, call_next):
 
 # Include API routes
 app.include_router(router, prefix="/v2")
+app.include_router(batch_router, prefix="/v2")
 
 
 # Root endpoint - serve HTML UI
@@ -159,7 +169,7 @@ async def health_check() -> Dict[str, str]:
 
 # Readiness check endpoint
 @app.get("/ready", tags=["Health"])
-async def readiness_check() -> Dict[str, str]:
+async def readiness_check() -> Dict[str, bool | str]:
     """
     Readiness check endpoint
     Verifies that all dependencies are available

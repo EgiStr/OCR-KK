@@ -4,155 +4,347 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KK-OCR v2 - Indonesian Family Card OCR</title>
+    <meta name="description" content="Extract structured data from Indonesian Family Card (Kartu Keluarga) using AI-powered OCR">
     <link rel="stylesheet" href="/static/styles.css">
-    <!-- SheetJS for Excel export -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="logo">
-                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="40" height="40" rx="8" fill="#4F46E5"/>
-                    <path d="M12 12H28V28H12V12Z" stroke="white" stroke-width="2"/>
-                    <path d="M16 16H24M16 20H24M16 24H20" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                <h1>KK-OCR v2</h1>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                        <defs>
+                            <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#6366f1"/>
+                                <stop offset="100%" style="stop-color:#8b5cf6"/>
+                            </linearGradient>
+                        </defs>
+                        <rect width="40" height="40" rx="10" fill="url(#logoGrad)"/>
+                        <path d="M12 12H28V28H12V12Z" stroke="white" stroke-width="2"/>
+                        <path d="M16 16H24M16 20H24M16 24H20" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <div class="logo-text">
+                        <h1>KK-OCR</h1>
+                        <span class="version">v2.1.0</span>
+                    </div>
+                </div>
             </div>
-            <div class="subtitle">Ekstraksi Data Kartu Keluarga dengan AI</div>
-        </header>
+            
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-view="upload">
+                    <span class="nav-icon">📤</span>
+                    <span class="nav-text">Upload</span>
+                </button>
+                <button class="nav-item" data-view="jobs">
+                    <span class="nav-icon">📋</span>
+                    <span class="nav-text">Jobs</span>
+                    <span class="job-badge" id="activeJobCount" style="display: none;">0</span>
+                </button>
+                <button class="nav-item" data-view="results">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Results</span>
+                </button>
+                <button class="nav-item" data-view="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Settings</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="theme-toggle" id="themeToggle" title="Toggle Dark Mode">
+                    <span class="theme-icon light">☀️</span>
+                    <span class="theme-icon dark">🌙</span>
+                </button>
+                <a href="/docs" target="_blank" class="api-docs-link">API Docs</a>
+            </div>
+        </aside>
 
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Upload Section -->
-            <section class="upload-section">
-                <div class="upload-area" id="uploadArea">
-                    <div class="upload-icon">📄</div>
+            <!-- Upload View -->
+            <section class="view active" id="uploadView">
+                <div class="view-header">
                     <h2>Upload Kartu Keluarga</h2>
-                    <p>Drag & drop gambar KK atau klik untuk memilih file</p>
-                    <p class="file-info">Mendukung: JPEG, PNG, PDF (Max 10MB)</p>
-                    <input type="file" id="fileInput" accept="image/jpeg,image/png,application/pdf" hidden>
-                    <button class="btn-primary" id="selectFileBtn">Pilih File</button>
+                    <p class="view-subtitle">Ekstraksi data otomatis menggunakan AI</p>
                 </div>
 
-                <!-- Preview Section -->
-                <div class="preview-section" id="previewSection" style="display: none;">
-                    <div class="preview-header">
-                        <h3>Preview Gambar</h3>
-                        <button class="btn-secondary" id="changeFileBtn">Ganti File</button>
+                <!-- Pipeline Mode Selector -->
+                <div class="pipeline-selector">
+                    <label class="pipeline-label">Pipeline Mode:</label>
+                    <div class="pipeline-options">
+                        <button class="pipeline-option" data-mode="vlm_only" title="Fastest, best for clean documents">
+                            <span class="option-icon">⚡</span>
+                            <span class="option-name">VLM Only</span>
+                            <span class="option-desc">Fastest</span>
+                        </button>
+                        <button class="pipeline-option active" data-mode="yolo_vlm" title="Balanced speed and accuracy">
+                            <span class="option-icon">🎯</span>
+                            <span class="option-name">YOLO + VLM</span>
+                            <span class="option-desc">Recommended</span>
+                        </button>
+                        <button class="pipeline-option" data-mode="full" title="Most accurate, includes enhancement">
+                            <span class="option-icon">🔬</span>
+                            <span class="option-name">Full Pipeline</span>
+                            <span class="option-desc">Most Accurate</span>
+                        </button>
                     </div>
-                    <div class="preview-image">
-                        <img id="previewImg" src="" alt="Preview">
-                    </div>
-                    <div class="file-details" id="fileDetails"></div>
-                    <button class="btn-primary btn-large" id="processBtn">
-                        <span class="btn-icon">🚀</span>
-                        Proses Ekstraksi Data
+                </div>
+
+                <!-- Upload Mode Tabs -->
+                <div class="upload-tabs">
+                    <button class="upload-tab active" data-tab="single">
+                        <span class="tab-icon">📄</span>
+                        Single File
+                    </button>
+                    <button class="upload-tab" data-tab="batch">
+                        <span class="tab-icon">📁</span>
+                        Batch Upload
                     </button>
                 </div>
-            </section>
 
-            <!-- Processing Section -->
-            <section class="processing-section" id="processSection" style="display: none;">
-                <div class="processing-card">
-                    <div class="spinner"></div>
-                    <h3>Memproses Dokumen...</h3>
-                    <p id="processingStatus">Mengunggah file...</p>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progressBar"></div>
+                <!-- Single Upload Tab -->
+                <div class="tab-content active" id="singleTab">
+                    <div class="upload-zone" id="singleUploadZone">
+                        <div class="upload-zone-content">
+                            <div class="upload-icon-wrapper">
+                                <span class="upload-icon">📄</span>
+                                <div class="upload-icon-ring"></div>
+                            </div>
+                            <h3>Drag & Drop File KK</h3>
+                            <p>atau klik untuk memilih file</p>
+                            <span class="file-types">JPEG, PNG, PDF • Max 10MB</span>
+                        </div>
+                        <input type="file" id="singleFileInput" accept="image/jpeg,image/png,application/pdf" hidden>
                     </div>
-                    <div class="processing-steps">
-                        <div class="step" id="step1">
-                            <span class="step-icon">⏳</span>
-                            <span class="step-text">YOLO Detection</span>
+
+                    <!-- Single File Preview -->
+                    <div class="file-preview-card" id="singlePreview" style="display: none;">
+                        <div class="preview-image-container">
+                            <img id="singlePreviewImg" src="" alt="Preview">
                         </div>
-                        <div class="step" id="step2">
-                            <span class="step-icon">⏳</span>
-                            <span class="step-text">U-Net Enhancement</span>
+                        <div class="preview-info">
+                            <h4 id="singleFileName">filename.jpg</h4>
+                            <span id="singleFileSize">1.5 MB</span>
+                            <button class="btn-remove" id="removeSingleFile">×</button>
                         </div>
-                        <div class="step" id="step3">
-                            <span class="step-icon">⏳</span>
-                            <span class="step-text">VLM Extraction</span>
+                        <button class="btn-primary btn-process" id="processSingleBtn">
+                            <span class="btn-icon">🚀</span>
+                            Proses Ekstraksi
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Batch Upload Tab -->
+                <div class="tab-content" id="batchTab">
+                    <div class="upload-zone batch" id="batchUploadZone">
+                        <div class="upload-zone-content">
+                            <div class="upload-icon-wrapper">
+                                <span class="upload-icon">📁</span>
+                                <div class="upload-icon-ring"></div>
+                            </div>
+                            <h3>Drag & Drop Multiple Files</h3>
+                            <p>atau klik untuk memilih files (max 20)</p>
+                            <span class="file-types">JPEG, PNG, PDF • Max 10MB per file</span>
+                        </div>
+                        <input type="file" id="batchFileInput" accept="image/jpeg,image/png,application/pdf" multiple hidden>
+                    </div>
+
+                    <!-- Batch File List -->
+                    <div class="batch-file-list" id="batchFileList" style="display: none;">
+                        <div class="batch-header">
+                            <h4><span id="batchFileCount">0</span> files selected</h4>
+                            <div class="batch-actions">
+                                <button class="btn-secondary btn-sm" id="addMoreFiles">+ Add More</button>
+                                <button class="btn-danger btn-sm" id="clearAllFiles">Clear All</button>
+                            </div>
+                        </div>
+                        <div class="file-grid" id="fileGrid"></div>
+                        <div class="batch-footer">
+                            <div class="batch-options">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="asyncMode" checked>
+                                    <span class="checkmark"></span>
+                                    Async Processing (recommended for large batches)
+                                </label>
+                            </div>
+                            <button class="btn-primary btn-process" id="processBatchBtn">
+                                <span class="btn-icon">🚀</span>
+                                Process All Files
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Processing Indicator -->
+                <div class="processing-overlay" id="processingOverlay" style="display: none;">
+                    <div class="processing-card">
+                        <div class="processing-animation">
+                            <div class="spinner-ring"></div>
+                            <div class="spinner-ring delay"></div>
+                            <span class="processing-emoji">🔍</span>
+                        </div>
+                        <h3 id="processingTitle">Memproses Dokumen...</h3>
+                        <p id="processingStatus">Initializing...</p>
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                            <span class="progress-text" id="progressText">0%</span>
+                        </div>
+                        <div class="processing-steps" id="processingSteps">
+                            <div class="step" data-step="yolo">
+                                <span class="step-indicator"></span>
+                                <span class="step-text">YOLO Detection</span>
+                            </div>
+                            <div class="step" data-step="unet">
+                                <span class="step-indicator"></span>
+                                <span class="step-text">Enhancement</span>
+                            </div>
+                            <div class="step" data-step="vlm">
+                                <span class="step-indicator"></span>
+                                <span class="step-text">VLM Extraction</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- Results Section -->
-            <section class="results-section" id="resultsSection" style="display: none;">
-                <div class="results-header">
-                    <h2>📊 Hasil Ekstraksi Data</h2>
+            <!-- Jobs View -->
+            <section class="view" id="jobsView">
+                <div class="view-header">
+                    <h2>Active Jobs</h2>
+                    <p class="view-subtitle">Track batch processing progress</p>
+                </div>
+                <div class="jobs-container" id="jobsContainer">
+                    <div class="empty-state">
+                        <span class="empty-icon">📋</span>
+                        <h3>No Active Jobs</h3>
+                        <p>Start a batch processing job to see it here</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results View -->
+            <section class="view" id="resultsView">
+                <div class="view-header">
+                    <h2>Extraction Results</h2>
+                    <p class="view-subtitle">View and export extracted data</p>
+                </div>
+                <div class="results-toolbar" id="resultsToolbar" style="display: none;">
+                    <div class="results-count">
+                        <span id="resultsCount">0</span> results
+                    </div>
                     <div class="results-actions">
-                        <button class="btn-secondary" id="downloadJsonBtn">
+                        <button class="btn-secondary" id="exportAllJson">
                             <span class="btn-icon">💾</span>
-                            Download JSON
+                            Export All JSON
                         </button>
-                        <button class="btn-secondary" id="exportExcelBtn">
+                        <button class="btn-secondary" id="exportAllExcel">
                             <span class="btn-icon">📊</span>
-                            Export Excel
+                            Export All Excel
                         </button>
-                        <button class="btn-secondary" id="copyJsonBtn">
-                            <span class="btn-icon">📋</span>
-                            Copy JSON
-                        </button>
-                        <button class="btn-primary" id="newUploadBtn">
-                            <span class="btn-icon">🔄</span>
-                            Upload Baru
+                        <button class="btn-danger" id="clearResults">
+                            <span class="btn-icon">🗑️</span>
+                            Clear All
                         </button>
                     </div>
                 </div>
-
-                <!-- Metadata -->
-                <div class="result-card">
-                    <h3>ℹ️ Metadata</h3>
-                    <div class="metadata-grid" id="metadataGrid"></div>
-                </div>
-
-                <!-- Header KK -->
-                <div class="result-card">
-                    <h3>📋 Informasi Kartu Keluarga</h3>
-                    <div class="data-grid" id="headerGrid"></div>
-                </div>
-
-                <!-- Family Members -->
-                <div class="result-card">
-                    <h3>👥 Anggota Keluarga (<span id="memberCount">0</span>)</h3>
-                    <div id="membersContainer"></div>
-                </div>
-
-                <!-- Footer -->
-                <div class="result-card">
-                    <h3>📝 Informasi Tambahan</h3>
-                    <div class="data-grid" id="footerGrid"></div>
-                </div>
-
-                <!-- Raw JSON -->
-                <div class="result-card">
-                    <h3>🔍 Raw JSON Response</h3>
-                    <pre id="rawJson"></pre>
+                <div class="results-container" id="resultsContainer">
+                    <div class="empty-state">
+                        <span class="empty-icon">📊</span>
+                        <h3>No Results Yet</h3>
+                        <p>Process documents to see extraction results here</p>
+                    </div>
                 </div>
             </section>
 
-            <!-- Error Section -->
-            <section class="error-section" id="errorSection" style="display: none;">
-                <div class="error-card">
-                    <div class="error-icon">❌</div>
-                    <h3>Terjadi Kesalahan</h3>
-                    <p id="errorMessage"></p>
-                    <button class="btn-primary" id="retryBtn">
-                        <span class="btn-icon">🔄</span>
-                        Coba Lagi
-                    </button>
+            <!-- Settings View -->
+            <section class="view" id="settingsView">
+                <div class="view-header">
+                    <h2>Settings</h2>
+                    <p class="view-subtitle">Configure application preferences</p>
+                </div>
+                <div class="settings-container">
+                    <div class="settings-card">
+                        <h3>API Configuration</h3>
+                        <div class="setting-item">
+                            <label>API Base URL</label>
+                            <input type="text" id="apiBaseUrl" value="http://localhost:8000" class="setting-input">
+                        </div>
+                        <div class="setting-item">
+                            <label>Job Polling Interval (ms)</label>
+                            <input type="number" id="pollingInterval" value="2000" min="1000" max="10000" class="setting-input">
+                        </div>
+                    </div>
+                    <div class="settings-card">
+                        <h3>Display</h3>
+                        <div class="setting-item">
+                            <label>Theme</label>
+                            <select id="themeSelect" class="setting-input">
+                                <option value="system">System</option>
+                                <option value="light">Light</option>
+                                <option value="dark">Dark</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
+                            <label>Auto-switch to Results</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="autoSwitchResults" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="settings-card">
+                        <h3>System Info</h3>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">Version</span>
+                                <span class="info-value">2.1.0</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Pipeline Modes</span>
+                                <span class="info-value">VLM, YOLO+VLM, Full</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Max Batch Size</span>
+                                <span class="info-value">20 files</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
         </main>
 
-        <!-- Footer -->
-        <footer class="footer">
-            <p>KK-OCR v2.1.0 | Powered by YOLO + U-Net + Gemini AI</p>
-            <p>© 2025 Indonesian Family Card OCR</p>
-        </footer>
+        <!-- Result Detail Modal -->
+        <div class="modal" id="resultModal">
+            <div class="modal-overlay"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Extraction Result</h3>
+                    <button class="modal-close" id="closeModal">×</button>
+                </div>
+                <div class="modal-body" id="modalBody">
+                    <!-- Dynamic content -->
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" id="modalDownloadJson">
+                        <span class="btn-icon">💾</span> Download JSON
+                    </button>
+                    <button class="btn-secondary" id="modalExportExcel">
+                        <span class="btn-icon">📊</span> Export Excel
+                    </button>
+                    <button class="btn-secondary" id="modalCopyJson">
+                        <span class="btn-icon">📋</span> Copy JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Container -->
+        <div class="toast-container" id="toastContainer"></div>
     </div>
 
     <script src="/static/app.js"></script>

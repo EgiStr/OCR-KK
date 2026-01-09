@@ -1,689 +1,1273 @@
-// API Configuration
-const API_BASE_URL = 'http://localhost:8000';
-const API_ENDPOINT = `${API_BASE_URL}/v2/extract/kk`;
+/**
+ * KK-OCR v2 - Modern Web Application
+ * Feature-rich client for Indonesian Family Card OCR
+ */
 
-// Global state
-let currentFile = null;
-let resultData = null;
+// ============================================
+// Application State
+// ============================================
+const AppState = {
+    // Configuration
+    config: {
+        apiBaseUrl: localStorage.getItem('apiBaseUrl') || 'http://localhost:8000',
+        pollingInterval: parseInt(localStorage.getItem('pollingInterval')) || 2000,
+        autoSwitchResults: localStorage.getItem('autoSwitchResults') !== 'false',
+        theme: localStorage.getItem('theme') || 'system'
+    },
+    
+    // Current view state
+    currentView: 'upload',
+    currentTab: 'single',
+    pipelineMode: 'yolo_vlm',
+    
+    // File management
+    singleFile: null,
+    batchFiles: [],
+    
+    // Jobs tracking
+    activeJobs: {},
+    pollingIntervals: {},
+    
+    // Results storage
+    results: JSON.parse(localStorage.getItem('results') || '[]'),
+    currentResult: null
+};
 
-// Helper function: pick first available key from object
-function pick(obj, keys, fallback = '-') {
-    if (!obj) return fallback;
-    for (const key of keys) {
-        if (obj.hasOwnProperty(key) && obj[key] !== null && obj[key] !== undefined) {
-            return obj[key];
-        }
-    }
-    return fallback;
-}
-
+// ============================================
 // DOM Elements
-const uploadArea = document.getElementById('uploadArea');
-const fileInput = document.getElementById('fileInput');
-const selectFileBtn = document.getElementById('selectFileBtn');
-const previewSection = document.getElementById('previewSection');
-const previewImg = document.getElementById('previewImg');
-const fileDetails = document.getElementById('fileDetails');
-const changeFileBtn = document.getElementById('changeFileBtn');
-const processBtn = document.getElementById('processBtn');
-const processSection = document.getElementById('processSection');
-const processingStatus = document.getElementById('processingStatus');
-const progressBar = document.getElementById('progressBar');
-const resultsSection = document.getElementById('resultsSection');
-const errorSection = document.getElementById('errorSection');
-const errorMessage = document.getElementById('errorMessage');
-const retryBtn = document.getElementById('retryBtn');
-const downloadJsonBtn = document.getElementById('downloadJsonBtn');
-const copyJsonBtn = document.getElementById('copyJsonBtn');
-const newUploadBtn = document.getElementById('newUploadBtn');
+// ============================================
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => document.querySelectorAll(selector);
 
-// Initialize
+// ============================================
+// Initialization
+// ============================================
 document.addEventListener('DOMContentLoaded', () => {
-    setupEventListeners();
+    initTheme();
+    initNavigation();
+    initPipelineSelector();
+    initUploadTabs();
+    initSingleUpload();
+    initBatchUpload();
+    initProcessing();
+    initJobs();
+    initResults();
+    initSettings();
+    initModal();
+    loadSavedResults();
+    updateJobBadge();
 });
 
-// Setup Event Listeners
-function setupEventListeners() {
-    // Upload area click
-    uploadArea.addEventListener('click', () => fileInput.click());
-    selectFileBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        fileInput.click();
+// ============================================
+// Theme Management
+// ============================================
+function initTheme() {
+    const theme = AppState.config.theme;
+    applyTheme(theme);
+    
+    $('#themeToggle').addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme');
+        const newTheme = current === 'dark' ? 'light' : 'dark';
+        applyTheme(newTheme);
+        AppState.config.theme = newTheme;
+        localStorage.setItem('theme', newTheme);
+        $('#themeSelect').value = newTheme;
     });
+}
 
+function applyTheme(theme) {
+    if (theme === 'system') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+    } else {
+        document.documentElement.setAttribute('data-theme', theme);
+    }
+}
+
+// ============================================
+// Navigation
+// ============================================
+function initNavigation() {
+    $$('.nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const view = item.dataset.view;
+            switchView(view);
+        });
+    });
+}
+
+function switchView(viewName) {
+    // Update nav items
+    $$('.nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.view === viewName);
+    });
+    
+    // Update views
+    $$('.view').forEach(view => {
+        view.classList.toggle('active', view.id === `${viewName}View`);
+    });
+    
+    AppState.currentView = viewName;
+}
+
+// ============================================
+// Pipeline Selector
+// ============================================
+function initPipelineSelector() {
+    $$('.pipeline-option').forEach(option => {
+        option.addEventListener('click', () => {
+            $$('.pipeline-option').forEach(o => o.classList.remove('active'));
+            option.classList.add('active');
+            AppState.pipelineMode = option.dataset.mode;
+            
+            // Update processing steps visibility based on mode
+            updateProcessingSteps();
+        });
+    });
+}
+
+function updateProcessingSteps() {
+    const yoloStep = $('[data-step="yolo"]');
+    const unetStep = $('[data-step="unet"]');
+    
+    if (AppState.pipelineMode === 'vlm_only') {
+        yoloStep.style.display = 'none';
+        unetStep.style.display = 'none';
+    } else if (AppState.pipelineMode === 'yolo_vlm') {
+        yoloStep.style.display = 'flex';
+        unetStep.style.display = 'none';
+    } else {
+        yoloStep.style.display = 'flex';
+        unetStep.style.display = 'flex';
+    }
+}
+
+// ============================================
+// Upload Tabs
+// ============================================
+function initUploadTabs() {
+    $$('.upload-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabName = tab.dataset.tab;
+            switchUploadTab(tabName);
+        });
+    });
+}
+
+function switchUploadTab(tabName) {
+    $$('.upload-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+    
+    $$('.tab-content').forEach(content => {
+        content.classList.toggle('active', content.id === `${tabName}Tab`);
+    });
+    
+    AppState.currentTab = tabName;
+}
+
+// ============================================
+// Single File Upload
+// ============================================
+function initSingleUpload() {
+    const uploadZone = $('#singleUploadZone');
+    const fileInput = $('#singleFileInput');
+    const preview = $('#singlePreview');
+    
+    // Click to upload
+    uploadZone.addEventListener('click', () => fileInput.click());
+    
     // File input change
-    fileInput.addEventListener('change', handleFileSelect);
-
-    // Drag and drop
-    uploadArea.addEventListener('dragover', handleDragOver);
-    uploadArea.addEventListener('dragleave', handleDragLeave);
-    uploadArea.addEventListener('drop', handleDrop);
-
-    // Buttons
-    changeFileBtn.addEventListener('click', resetUpload);
-    processBtn.addEventListener('click', processDocument);
-    retryBtn.addEventListener('click', () => {
-        hideSection(errorSection);
-        showSection(previewSection);
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleSingleFile(e.target.files[0]);
+        }
     });
-    newUploadBtn.addEventListener('click', resetUpload);
-    downloadJsonBtn.addEventListener('click', downloadJson);
-    copyJsonBtn.addEventListener('click', copyJson);
     
-    // Export Excel button
-    const exportExcelBtn = document.getElementById('exportExcelBtn');
-    if (exportExcelBtn) {
-        exportExcelBtn.addEventListener('click', exportToExcel);
-    }
-}
-
-// File Selection Handlers
-function handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (file) {
-        validateAndPreviewFile(file);
-    }
-}
-
-function handleDragOver(e) {
-    e.preventDefault();
-    uploadArea.classList.add('drag-over');
-}
-
-function handleDragLeave(e) {
-    e.preventDefault();
-    uploadArea.classList.remove('drag-over');
-}
-
-function handleDrop(e) {
-    e.preventDefault();
-    uploadArea.classList.remove('drag-over');
+    // Drag and drop
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('drag-over');
+    });
     
-    const file = e.dataTransfer.files[0];
-    if (file) {
-        validateAndPreviewFile(file);
-    }
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('drag-over');
+    });
+    
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length > 0) {
+            handleSingleFile(e.dataTransfer.files[0]);
+        }
+    });
+    
+    // Remove file
+    $('#removeSingleFile').addEventListener('click', () => {
+        AppState.singleFile = null;
+        fileInput.value = '';
+        preview.style.display = 'none';
+        uploadZone.style.display = 'block';
+    });
+    
+    // Process button
+    $('#processSingleBtn').addEventListener('click', processSingleFile);
 }
 
-// File Validation and Preview
-function validateAndPreviewFile(file) {
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'application/pdf'];
-    if (!validTypes.includes(file.type)) {
-        showError('Format file tidak didukung. Gunakan JPEG, PNG, atau PDF.');
-        return;
-    }
-
-    // Validate file size (10MB)
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-        showError('Ukuran file terlalu besar. Maksimal 10MB.');
-        return;
-    }
-
-    currentFile = file;
-
+function handleSingleFile(file) {
+    if (!validateFile(file)) return;
+    
+    AppState.singleFile = file;
+    
     // Show preview
     const reader = new FileReader();
     reader.onload = (e) => {
         if (file.type.startsWith('image/')) {
-            previewImg.src = e.target.result;
+            $('#singlePreviewImg').src = e.target.result;
         } else {
-            // For PDF, show placeholder
-            previewImg.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjI1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjI1MCIgZmlsbD0iI0Y5RkFGQiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iNDgiIGZpbGw9IiM2QjcyODAiIHRleHQtYW5jaG9yPSJtaWRkbGUiPvCfk4Q8L3RleHQ+PHRleHQgeD0iNTAlIiB5PSI3MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNiIgZmlsbD0iIzZCNzI4MCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+UERGIEZpbGU8L3RleHQ+PC9zdmc+';
+            // PDF placeholder
+            $('#singlePreviewImg').src = createPDFPlaceholder();
         }
-
-        // Show file details
-        fileDetails.innerHTML = `
-            <div><strong>Nama File:</strong> ${file.name}</div>
-            <div><strong>Ukuran:</strong> ${formatFileSize(file.size)}</div>
-            <div><strong>Tipe:</strong> ${file.type}</div>
-        `;
-
-        // Hide upload area, show preview
-        hideSection(uploadArea);
-        showSection(previewSection);
     };
-
     reader.readAsDataURL(file);
+    
+    $('#singleFileName').textContent = file.name;
+    $('#singleFileSize').textContent = formatFileSize(file.size);
+    
+    $('#singleUploadZone').style.display = 'none';
+    $('#singlePreview').style.display = 'block';
 }
 
-// Process Document
-async function processDocument() {
-    if (!currentFile) {
-        showError('Tidak ada file yang dipilih.');
+// ============================================
+// Batch Upload
+// ============================================
+function initBatchUpload() {
+    const uploadZone = $('#batchUploadZone');
+    const fileInput = $('#batchFileInput');
+    
+    // Click to upload
+    uploadZone.addEventListener('click', () => fileInput.click());
+    
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            addBatchFiles(Array.from(e.target.files));
+        }
+    });
+    
+    // Drag and drop
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('drag-over');
+    });
+    
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('drag-over');
+    });
+    
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length > 0) {
+            addBatchFiles(Array.from(e.dataTransfer.files));
+        }
+    });
+    
+    // Add more files
+    $('#addMoreFiles').addEventListener('click', () => fileInput.click());
+    
+    // Clear all
+    $('#clearAllFiles').addEventListener('click', clearBatchFiles);
+    
+    // Process button
+    $('#processBatchBtn').addEventListener('click', processBatchFiles);
+}
+
+function addBatchFiles(files) {
+    const validFiles = files.filter(validateFile);
+    
+    // Limit to 20 files
+    const remaining = 20 - AppState.batchFiles.length;
+    const filesToAdd = validFiles.slice(0, remaining);
+    
+    if (validFiles.length > remaining) {
+        showToast(`Only ${remaining} more files can be added (max 20)`, 'warning');
+    }
+    
+    AppState.batchFiles = [...AppState.batchFiles, ...filesToAdd];
+    updateBatchFileList();
+}
+
+function updateBatchFileList() {
+    const list = $('#batchFileList');
+    const grid = $('#fileGrid');
+    const count = $('#batchFileCount');
+    const uploadZone = $('#batchUploadZone');
+    
+    if (AppState.batchFiles.length === 0) {
+        list.style.display = 'none';
+        uploadZone.style.display = 'block';
         return;
     }
+    
+    list.style.display = 'block';
+    if (AppState.batchFiles.length < 20) {
+        uploadZone.style.display = 'block';
+    } else {
+        uploadZone.style.display = 'none';
+    }
+    
+    count.textContent = AppState.batchFiles.length;
+    
+    grid.innerHTML = AppState.batchFiles.map((file, index) => `
+        <div class="file-card" data-index="${index}">
+            <img class="file-card-thumbnail" src="${file.type.startsWith('image/') ? URL.createObjectURL(file) : createPDFPlaceholder()}" alt="${file.name}">
+            <div class="file-card-name">${file.name}</div>
+            <button class="file-card-remove" onclick="removeFileFromBatch(${index})">×</button>
+        </div>
+    `).join('');
+}
 
-    // Hide preview, show processing
-    hideSection(previewSection);
-    showSection(processSection);
+function removeFileFromBatch(index) {
+    AppState.batchFiles.splice(index, 1);
+    updateBatchFileList();
+}
 
-    // Reset processing UI
-    updateProcessingStatus('Mengunggah file...', 10);
-    resetProcessingSteps();
+function clearBatchFiles() {
+    AppState.batchFiles = [];
+    $('#batchFileInput').value = '';
+    updateBatchFileList();
+}
 
+// ============================================
+// Processing
+// ============================================
+function initProcessing() {
+    updateProcessingSteps();
+}
+
+async function processSingleFile() {
+    if (!AppState.singleFile) {
+        showToast('No file selected', 'error');
+        return;
+    }
+    
+    showProcessing();
+    updateProgress(10, 'Uploading file...');
+    
     try {
-        // Create FormData
         const formData = new FormData();
-        formData.append('file', currentFile);
-
-        // Update status
-        updateProcessingStatus('Melakukan YOLO detection...', 30);
-        setStepActive('step1');
-
-        // Make API request
-        const response = await fetch(API_ENDPOINT, {
+        formData.append('file', AppState.singleFile);
+        
+        // Show YOLO step
+        updateProgress(30, 'Detecting fields...');
+        setStepActive('yolo');
+        
+        const response = await fetch(`${AppState.config.apiBaseUrl}/v2/extract/kk`, {
             method: 'POST',
             body: formData
         });
-
+        
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'Gagal memproses dokumen');
+            const error = await response.json();
+            throw new Error(error.detail || 'Processing failed');
         }
-
-        // Update status
-        updateProcessingStatus('Melakukan enhancement dengan U-Net...', 60);
-        setStepCompleted('step1');
-        setStepActive('step2');
-
-        // Simulate delay for better UX
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Update status
-        updateProcessingStatus('Melakukan ekstraksi data dengan VLM...', 80);
-        setStepCompleted('step2');
-        setStepActive('step3');
-
-        // Get result
+        
+        // Show enhancement step
+        updateProgress(60, 'Enhancing image...');
+        setStepCompleted('yolo');
+        setStepActive('unet');
+        
+        await delay(500);
+        
+        // Show VLM step
+        updateProgress(80, 'Extracting data...');
+        setStepCompleted('unet');
+        setStepActive('vlm');
+        
         const result = await response.json();
-        resultData = result;
-
-        // Update status
-        updateProcessingStatus('Selesai!', 100);
-        setStepCompleted('step3');
-
-        // Wait a moment then show results
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Hide processing, show results
-        hideSection(processSection);
-        displayResults(result);
-
+        
+        // Complete
+        updateProgress(100, 'Complete!');
+        setStepCompleted('vlm');
+        
+        await delay(500);
+        hideProcessing();
+        
+        // Save result
+        saveResult(result);
+        
+        // Reset upload
+        AppState.singleFile = null;
+        $('#singleFileInput').value = '';
+        $('#singlePreview').style.display = 'none';
+        $('#singleUploadZone').style.display = 'block';
+        
+        // Show result
+        if (AppState.config.autoSwitchResults) {
+            switchView('results');
+        }
+        
+        showToast('Extraction completed successfully!', 'success');
+        
     } catch (error) {
-        console.error('Error:', error);
-        hideSection(processSection);
-        showError(error.message || 'Terjadi kesalahan saat memproses dokumen');
+        console.error('Processing error:', error);
+        hideProcessing();
+        showToast(error.message || 'Processing failed', 'error');
     }
 }
 
-// Display Results
-function displayResults(data) {
-    // Metadata
-        // store globally
-        resultData = data;
-
-        // Metadata
-        const metadataGrid = document.getElementById('metadataGrid');
-        const md = data.metadata || {};
-        const sourceFile = pick(md, ['source_filename', 'source_file', 'sourceFile', 'sourceFileName'], '-');
-        const processingTime = pick(md, ['processing_timestamp', 'processing_time', 'timestamp'], '-');
-        const yoloVer = pick(md, ['model_version_yolo', 'model_version_yolo'], '-');
-        const unetVer = pick(md, ['model_version_unet', 'model_version_unet'], '-');
-        const vlmVer = pick(md, ['model_version_vlm', 'model_version_vlm', 'model_version_vlm_local'], '-');
-
-        metadataGrid.innerHTML = `
-            <div class="data-item">
-                <div class="data-label">Nama File</div>
-                <div class="data-value">${sourceFile}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">Waktu Proses</div>
-                <div class="data-value">${processingTime}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">YOLO Version</div>
-                <div class="data-value">${yoloVer}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">VLM Version</div>
-                <div class="data-value">${vlmVer}</div>
-            </div>
-        `;
-
-    // Header
-    const headerGrid = document.getElementById('headerGrid');
-        const header = data.header || {};
-        const desa = pick(header, ['desa', 'desa_kelurahan', 'desa_kel'], '-');
-        headerGrid.innerHTML = `
-            <div class="data-item">
-                <div class="data-label">No. KK</div>
-                <div class="data-value">${pick(header, ['no_kk', 'noKK'], '-')}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">Kepala Keluarga</div>
-                <div class="data-value">${pick(header, ['kepala_keluarga', 'kepala_keluarga'])}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">Alamat</div>
-                <div class="data-value">${pick(header, ['alamat', 'address'])}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">RT/RW</div>
-                <div class="data-value">${pick(header, ['rt'])}/${pick(header, ['rw'])}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">Desa/Kelurahan</div>
-                <div class="data-value">${desa}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">Kecamatan</div>
-                <div class="data-value">${pick(header, ['kecamatan'])}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">Kabupaten/Kota</div>
-                <div class="data-value">${pick(header, ['kabupaten_kota', 'kabupaten'])}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">Provinsi</div>
-                <div class="data-value">${pick(header, ['provinsi'])}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">Kode Pos</div>
-                <div class="data-value">${pick(header, ['kode_pos', 'kodepos', 'postal_code'])}</div>
-            </div>
-        `;
-
-    // Family Members
-    const memberCount = document.getElementById('memberCount');
-    const membersContainer = document.getElementById('membersContainer');
-        const members = data.anggota_keluarga || data.anggota || [];
-        memberCount.textContent = members.length;
-
-        membersContainer.innerHTML = members.map((member, index) => {
-            const pekerjaan = pick(member, ['jenis_pekerjaan', 'pekerjaan', 'jenis_pekerjaan'], '-');
-            return `
-            <div class="member-card">
-                <div class="member-header">
-                    <div class="member-name">${pick(member, ['nama_lengkap', 'name'], 'Tidak Ada Nama')}</div>
-                    <div class="member-badge">Anggota ${index + 1}</div>
-                </div>
-                <div class="member-details">
-                    <div class="data-item"><div class="data-label">NIK</div><div class="data-value">${pick(member, ['nik'], '-')}</div></div>
-                    <div class="data-item"><div class="data-label">Jenis Kelamin</div><div class="data-value">${pick(member, ['jenis_kelamin', 'gender'], '-')}</div></div>
-                    <div class="data-item"><div class="data-label">Tempat Lahir</div><div class="data-value">${pick(member, ['tempat_lahir', 'birth_place'], '-')}</div></div>
-                    <div class="data-item"><div class="data-label">Tanggal Lahir</div><div class="data-value">${pick(member, ['tanggal_lahir', 'birth_date'], '-')}</div></div>
-                    <div class="data-item"><div class="data-label">Agama</div><div class="data-value">${pick(member, ['agama'], '-')}</div></div>
-                    <div class="data-item"><div class="data-label">Pendidikan</div><div class="data-value">${pick(member, ['pendidikan'], '-')}</div></div>
-                    <div class="data-item"><div class="data-label">Pekerjaan</div><div class="data-value">${pekerjaan}</div></div>
-                    <div class="data-item"><div class="data-label">Status Perkawinan</div><div class="data-value">${pick(member, ['status_perkawinan'], '-')}</div></div>
-                    <div class="data-item"><div class="data-label">Status Keluarga</div><div class="data-value">${pick(member, ['status_keluarga'], '-')}</div></div>
-                    <div class="data-item"><div class="data-label">Kewarganegaraan</div><div class="data-value">${pick(member, ['kewarganegaraan'], '-')}</div></div>
-                    <div class="data-item"><div class="data-label">Nama Ayah</div><div class="data-value">${pick(member, ['nama_ayah'], '-')}</div></div>
-                    <div class="data-item"><div class="data-label">Nama Ibu</div><div class="data-value">${pick(member, ['nama_ibu'], '-')}</div></div>
-                </div>
-            </div>`;
-        }).join('');
-
-    // Footer
-    const footerGrid = document.getElementById('footerGrid');
-    const footer = data.footer;
-        const tanda_kepala = pick(footer, ['tanda_tangan_kepala_keluarga', 'tanda_tangan_kepala'], {});
-        const tanda_pejabat = pick(footer, ['tanda_tangan_pejabat', 'tanda_tangan_pejabat'], {});
-        const kepalaDinas = pick(footer, ['kepala_dinas'], '-');
-
-        footerGrid.innerHTML = `
-            <div class="data-item">
-                <div class="data-label">Tanggal Pembuatan</div>
-                <div class="data-value">${pick(header, ['tanggal_pembuatan'], '-')}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">Tanda Tangan Kepala Keluarga</div>
-                <div class="data-value">${(typeof tanda_kepala === 'object' ? (tanda_kepala.text || '-') : tanda_kepala) || '-'}</div>
-            </div>
-            <div class="data-item">
-                <div class="data-label">Tanda Tangan Pejabat</div>
-                <div class="data-value">${(typeof tanda_pejabat === 'object' ? (tanda_pejabat.text || '-') : tanda_pejabat) || '-'}</div>
-            </div>
-        `;
-
-    // Raw JSON
-    const rawJson = document.getElementById('rawJson');
-    rawJson.textContent = JSON.stringify(data, null, 2);
-
-    // Show results section
-    showSection(resultsSection);
+async function processBatchFiles() {
+    if (AppState.batchFiles.length === 0) {
+        showToast('No files selected', 'error');
+        return;
+    }
+    
+    const useAsync = $('#asyncMode').checked;
+    
+    if (useAsync) {
+        await processBatchAsync();
+    } else {
+        await processBatchSync();
+    }
 }
 
-// Processing UI Helpers
-function updateProcessingStatus(status, progress) {
-    processingStatus.textContent = status;
-    progressBar.style.width = `${progress}%`;
+async function processBatchSync() {
+    showProcessing();
+    updateProgress(0, 'Starting batch processing...');
+    
+    try {
+        const formData = new FormData();
+        AppState.batchFiles.forEach(file => {
+            formData.append('files', file);
+        });
+        
+        updateProgress(20, `Processing ${AppState.batchFiles.length} files...`);
+        setStepActive('yolo');
+        
+        const response = await fetch(`${AppState.config.apiBaseUrl}/v2/extract/kk/batch`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Batch processing failed');
+        }
+        
+        updateProgress(80, 'Finalizing...');
+        setStepCompleted('yolo');
+        setStepCompleted('unet');
+        setStepActive('vlm');
+        
+        const result = await response.json();
+        
+        updateProgress(100, 'Complete!');
+        setStepCompleted('vlm');
+        
+        await delay(500);
+        hideProcessing();
+        
+        // Save results
+        if (result.results) {
+            result.results.forEach(r => {
+                if (r.data) saveResult(r.data);
+            });
+        }
+        
+        // Clear batch files
+        clearBatchFiles();
+        
+        if (AppState.config.autoSwitchResults) {
+            switchView('results');
+        }
+        
+        const summary = result.summary || {};
+        showToast(`Batch completed: ${summary.successful || 0} successful, ${summary.failed || 0} failed`, 'success');
+        
+    } catch (error) {
+        console.error('Batch processing error:', error);
+        hideProcessing();
+        showToast(error.message || 'Batch processing failed', 'error');
+    }
+}
+
+async function processBatchAsync() {
+    showProcessing();
+    updateProgress(10, 'Starting async batch job...');
+    
+    try {
+        const formData = new FormData();
+        AppState.batchFiles.forEach(file => {
+            formData.append('files', file);
+        });
+        
+        const response = await fetch(`${AppState.config.apiBaseUrl}/v2/extract/kk/batch/async`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to start async job');
+        }
+        
+        const jobStatus = await response.json();
+        
+        hideProcessing();
+        
+        // Add job to tracking
+        AppState.activeJobs[jobStatus.job_id] = jobStatus;
+        startJobPolling(jobStatus.job_id);
+        updateJobsView();
+        updateJobBadge();
+        
+        // Clear batch files
+        clearBatchFiles();
+        
+        // Switch to jobs view
+        switchView('jobs');
+        
+        showToast('Batch job started! Tracking in Jobs view.', 'info');
+        
+    } catch (error) {
+        console.error('Async batch error:', error);
+        hideProcessing();
+        showToast(error.message || 'Failed to start async job', 'error');
+    }
+}
+
+function showProcessing() {
+    $('#processingOverlay').style.display = 'flex';
+    resetProcessingSteps();
+}
+
+function hideProcessing() {
+    $('#processingOverlay').style.display = 'none';
+}
+
+function updateProgress(percent, status) {
+    $('#progressFill').style.width = `${percent}%`;
+    $('#progressText').textContent = `${percent}%`;
+    $('#processingStatus').textContent = status;
 }
 
 function resetProcessingSteps() {
-    ['step1', 'step2', 'step3'].forEach(id => {
-        const step = document.getElementById(id);
+    $$('.processing-steps .step').forEach(step => {
         step.classList.remove('active', 'completed');
     });
 }
 
-function setStepActive(stepId) {
-    const step = document.getElementById(stepId);
-    step.classList.add('active');
+function setStepActive(stepName) {
+    const step = $(`[data-step="${stepName}"]`);
+    if (step) {
+        step.classList.remove('completed');
+        step.classList.add('active');
+    }
 }
 
-function setStepCompleted(stepId) {
-    const step = document.getElementById(stepId);
-    step.classList.remove('active');
-    step.classList.add('completed');
+function setStepCompleted(stepName) {
+    const step = $(`[data-step="${stepName}"]`);
+    if (step) {
+        step.classList.remove('active');
+        step.classList.add('completed');
+    }
 }
 
-// Download and Copy Functions
-function downloadJson() {
-    if (!resultData) return;
-
-    const blob = new Blob([JSON.stringify(resultData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `kk_extraction_${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    showToast('JSON berhasil diunduh!');
+// ============================================
+// Jobs Management
+// ============================================
+function initJobs() {
+    // Initialize from any persisted jobs
+    const savedJobs = JSON.parse(localStorage.getItem('activeJobs') || '{}');
+    AppState.activeJobs = savedJobs;
+    
+    // Resume polling for active jobs
+    Object.keys(AppState.activeJobs).forEach(jobId => {
+        const job = AppState.activeJobs[jobId];
+        if (job.status === 'pending' || job.status === 'processing') {
+            startJobPolling(jobId);
+        }
+    });
+    
+    updateJobsView();
 }
 
-function copyJson() {
-    if (!resultData) return;
+function startJobPolling(jobId) {
+    if (AppState.pollingIntervals[jobId]) return;
+    
+    AppState.pollingIntervals[jobId] = setInterval(async () => {
+        try {
+            const response = await fetch(`${AppState.config.apiBaseUrl}/v2/extract/kk/batch/${jobId}`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to get job status');
+            }
+            
+            const jobStatus = await response.json();
+            AppState.activeJobs[jobId] = jobStatus;
+            updateJobsView();
+            saveActiveJobs();
+            
+            // Check if job is complete
+            if (jobStatus.status === 'completed' || jobStatus.status === 'failed') {
+                stopJobPolling(jobId);
+                
+                if (jobStatus.status === 'completed') {
+                    // Save results
+                    if (jobStatus.results) {
+                        jobStatus.results.forEach(r => {
+                            if (r.data) saveResult(r.data);
+                        });
+                    }
+                    showToast(`Job ${jobId.substring(0, 8)}... completed!`, 'success');
+                } else {
+                    showToast(`Job ${jobId.substring(0, 8)}... failed`, 'error');
+                }
+                
+                updateJobBadge();
+            }
+            
+        } catch (error) {
+            console.error('Job polling error:', error);
+        }
+    }, AppState.config.pollingInterval);
+}
 
-    const jsonText = JSON.stringify(resultData, null, 2);
-    navigator.clipboard.writeText(jsonText).then(() => {
-        showToast('JSON berhasil disalin ke clipboard!');
-    }).catch(err => {
-        console.error('Failed to copy:', err);
-        showToast('Gagal menyalin JSON');
+function stopJobPolling(jobId) {
+    if (AppState.pollingIntervals[jobId]) {
+        clearInterval(AppState.pollingIntervals[jobId]);
+        delete AppState.pollingIntervals[jobId];
+    }
+}
+
+function updateJobsView() {
+    const container = $('#jobsContainer');
+    const jobs = Object.values(AppState.activeJobs);
+    
+    if (jobs.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">📋</span>
+                <h3>No Active Jobs</h3>
+                <p>Start a batch processing job to see it here</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = jobs.map(job => {
+        const progress = job.progress || 0;
+        const statusIcon = {
+            'pending': '⏳',
+            'processing': '🔄',
+            'completed': '✅',
+            'failed': '❌'
+        }[job.status] || '❓';
+        
+        return `
+            <div class="job-card ${job.status}">
+                <div class="job-icon">${statusIcon}</div>
+                <div class="job-info">
+                    <div class="job-id">${job.job_id}</div>
+                    <div class="job-status">${job.status.toUpperCase()}</div>
+                </div>
+                <div class="job-progress">
+                    <div class="job-progress-bar">
+                        <div class="job-progress-fill" style="width: ${progress}%"></div>
+                    </div>
+                    <div class="job-progress-text">${progress}% - ${job.processed || 0}/${job.total || 0} files</div>
+                </div>
+                <div class="job-actions">
+                    ${job.status === 'completed' || job.status === 'failed' ? 
+                        `<button class="btn-danger btn-sm" onclick="deleteJob('${job.job_id}')">Delete</button>` : 
+                        ''
+                    }
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateJobBadge() {
+    const activeCount = Object.values(AppState.activeJobs).filter(
+        j => j.status === 'pending' || j.status === 'processing'
+    ).length;
+    
+    const badge = $('#activeJobCount');
+    if (activeCount > 0) {
+        badge.textContent = activeCount;
+        badge.style.display = 'block';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+async function deleteJob(jobId) {
+    try {
+        await fetch(`${AppState.config.apiBaseUrl}/v2/extract/kk/batch/${jobId}`, {
+            method: 'DELETE'
+        });
+        
+        stopJobPolling(jobId);
+        delete AppState.activeJobs[jobId];
+        saveActiveJobs();
+        updateJobsView();
+        updateJobBadge();
+        
+        showToast('Job deleted', 'info');
+    } catch (error) {
+        console.error('Delete job error:', error);
+        showToast('Failed to delete job', 'error');
+    }
+}
+
+function saveActiveJobs() {
+    localStorage.setItem('activeJobs', JSON.stringify(AppState.activeJobs));
+}
+
+// ============================================
+// Results Management
+// ============================================
+function initResults() {
+    $('#exportAllJson').addEventListener('click', exportAllJson);
+    $('#exportAllExcel').addEventListener('click', exportAllExcel);
+    $('#clearResults').addEventListener('click', clearResults);
+}
+
+function saveResult(data) {
+    // Add timestamp and ID
+    const result = {
+        id: `result_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: new Date().toISOString(),
+        data: data
+    };
+    
+    AppState.results.unshift(result);
+    
+    // Keep only last 50 results
+    if (AppState.results.length > 50) {
+        AppState.results = AppState.results.slice(0, 50);
+    }
+    
+    localStorage.setItem('results', JSON.stringify(AppState.results));
+    updateResultsView();
+}
+
+function loadSavedResults() {
+    updateResultsView();
+}
+
+function updateResultsView() {
+    const container = $('#resultsContainer');
+    const toolbar = $('#resultsToolbar');
+    const countEl = $('#resultsCount');
+    
+    if (AppState.results.length === 0) {
+        toolbar.style.display = 'none';
+        container.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">📊</span>
+                <h3>No Results Yet</h3>
+                <p>Process documents to see extraction results here</p>
+            </div>
+        `;
+        return;
+    }
+    
+    toolbar.style.display = 'flex';
+    countEl.textContent = AppState.results.length;
+    
+    container.innerHTML = AppState.results.map(result => {
+        const data = result.data;
+        const header = data.header || {};
+        const members = data.anggota_keluarga || [];
+        
+        return `
+            <div class="result-card" onclick="showResultDetail('${result.id}')">
+                <div class="result-card-header">
+                    <h4>KK ${header.no_kk || 'Unknown'}</h4>
+                    <span>${new Date(result.timestamp).toLocaleString('id-ID')}</span>
+                </div>
+                <div class="result-card-body">
+                    <div class="result-item">
+                        <span class="result-label">Kepala Keluarga</span>
+                        <span class="result-value">${header.kepala_keluarga || '-'}</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Anggota</span>
+                        <span class="result-value">${members.length} orang</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Kecamatan</span>
+                        <span class="result-value">${header.kecamatan || '-'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function showResultDetail(resultId) {
+    const result = AppState.results.find(r => r.id === resultId);
+    if (!result) return;
+    
+    AppState.currentResult = result;
+    renderResultModal(result.data);
+    $('#resultModal').classList.add('active');
+}
+
+function renderResultModal(data) {
+    const body = $('#modalBody');
+    const header = data.header || {};
+    const members = data.anggota_keluarga || [];
+    const metadata = data.metadata || {};
+    
+    body.innerHTML = `
+        <!-- Metadata -->
+        <div class="data-section">
+            <h4>ℹ️ Metadata</h4>
+            <div class="data-grid">
+                <div class="data-item">
+                    <div class="label">Waktu Proses</div>
+                    <div class="value">${metadata.processing_timestamp || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">Model YOLO</div>
+                    <div class="value">${metadata.model_version_yolo || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">Model VLM</div>
+                    <div class="value">${metadata.model_version_vlm || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">File</div>
+                    <div class="value">${metadata.source_file || '-'}</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Header KK -->
+        <div class="data-section">
+            <h4>📋 Informasi Kartu Keluarga</h4>
+            <div class="data-grid">
+                <div class="data-item">
+                    <div class="label">No. KK</div>
+                    <div class="value">${header.no_kk || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">Kepala Keluarga</div>
+                    <div class="value">${header.kepala_keluarga || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">Alamat</div>
+                    <div class="value">${header.alamat || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">RT/RW</div>
+                    <div class="value">${header.rt || '-'}/${header.rw || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">Desa/Kelurahan</div>
+                    <div class="value">${header.desa || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">Kecamatan</div>
+                    <div class="value">${header.kecamatan || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">Kabupaten/Kota</div>
+                    <div class="value">${header.kabupaten_kota || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">Provinsi</div>
+                    <div class="value">${header.provinsi || '-'}</div>
+                </div>
+                <div class="data-item">
+                    <div class="label">Kode Pos</div>
+                    <div class="value">${header.kode_pos || '-'}</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Family Members -->
+        <div class="data-section">
+            <h4>👥 Anggota Keluarga (${members.length})</h4>
+            ${members.map((member, index) => `
+                <div class="member-section">
+                    <div class="member-header">
+                        <span class="member-name">${member.nama_lengkap || 'Tidak Ada Nama'}</span>
+                        <span class="member-badge">Anggota ${index + 1}</span>
+                    </div>
+                    <div class="data-grid">
+                        <div class="data-item">
+                            <div class="label">NIK</div>
+                            <div class="value">${member.nik || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Jenis Kelamin</div>
+                            <div class="value">${member.jenis_kelamin || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Tempat Lahir</div>
+                            <div class="value">${member.tempat_lahir || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Tanggal Lahir</div>
+                            <div class="value">${member.tanggal_lahir || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Agama</div>
+                            <div class="value">${member.agama || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Pendidikan</div>
+                            <div class="value">${member.pendidikan || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Pekerjaan</div>
+                            <div class="value">${member.jenis_pekerjaan || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Status Perkawinan</div>
+                            <div class="value">${member.status_perkawinan || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Status Keluarga</div>
+                            <div class="value">${member.status_keluarga || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Kewarganegaraan</div>
+                            <div class="value">${member.kewarganegaraan || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Nama Ayah</div>
+                            <div class="value">${member.nama_ayah || '-'}</div>
+                        </div>
+                        <div class="data-item">
+                            <div class="label">Nama Ibu</div>
+                            <div class="value">${member.nama_ibu || '-'}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function clearResults() {
+    if (!confirm('Are you sure you want to clear all results?')) return;
+    
+    AppState.results = [];
+    localStorage.removeItem('results');
+    updateResultsView();
+    showToast('All results cleared', 'info');
+}
+
+function exportAllJson() {
+    if (AppState.results.length === 0) {
+        showToast('No results to export', 'warning');
+        return;
+    }
+    
+    const data = AppState.results.map(r => r.data);
+    downloadJson(data, `kk_results_${Date.now()}.json`);
+    showToast('JSON exported successfully', 'success');
+}
+
+function exportAllExcel() {
+    if (AppState.results.length === 0) {
+        showToast('No results to export', 'warning');
+        return;
+    }
+    
+    try {
+        const wb = XLSX.utils.book_new();
+        
+        // Summary sheet
+        const summaryData = AppState.results.map((r, i) => {
+            const h = r.data.header || {};
+            const m = r.data.anggota_keluarga || [];
+            return [
+                i + 1,
+                h.no_kk || '-',
+                h.kepala_keluarga || '-',
+                h.kecamatan || '-',
+                h.kabupaten_kota || '-',
+                m.length,
+                new Date(r.timestamp).toLocaleString('id-ID')
+            ];
+        });
+        
+        summaryData.unshift(['No', 'No. KK', 'Kepala Keluarga', 'Kecamatan', 'Kabupaten/Kota', 'Jumlah Anggota', 'Waktu Proses']);
+        
+        const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+        wsSummary['!cols'] = [
+            { wch: 5 }, { wch: 18 }, { wch: 25 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 20 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+        
+        // All members sheet
+        const allMembers = [];
+        allMembers.push([
+            'No. KK', 'No', 'NIK', 'Nama Lengkap', 'Jenis Kelamin', 'Tempat Lahir', 'Tanggal Lahir',
+            'Agama', 'Pendidikan', 'Pekerjaan', 'Status Perkawinan', 'Status Keluarga',
+            'Kewarganegaraan', 'Nama Ayah', 'Nama Ibu'
+        ]);
+        
+        AppState.results.forEach(result => {
+            const noKK = result.data.header?.no_kk || '-';
+            const members = result.data.anggota_keluarga || [];
+            
+            members.forEach((m, i) => {
+                allMembers.push([
+                    noKK, i + 1, m.nik || '-', m.nama_lengkap || '-', m.jenis_kelamin || '-',
+                    m.tempat_lahir || '-', m.tanggal_lahir || '-', m.agama || '-',
+                    m.pendidikan || '-', m.jenis_pekerjaan || '-', m.status_perkawinan || '-',
+                    m.status_keluarga || '-', m.kewarganegaraan || '-', m.nama_ayah || '-', m.nama_ibu || '-'
+                ]);
+            });
+        });
+        
+        const wsMembers = XLSX.utils.aoa_to_sheet(allMembers);
+        wsMembers['!cols'] = [
+            { wch: 18 }, { wch: 5 }, { wch: 18 }, { wch: 25 }, { wch: 12 }, { wch: 15 }, { wch: 12 },
+            { wch: 10 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 25 }, { wch: 25 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsMembers, 'All Members');
+        
+        XLSX.writeFile(wb, `kk_results_${Date.now()}.xlsx`);
+        showToast('Excel exported successfully', 'success');
+        
+    } catch (error) {
+        console.error('Excel export error:', error);
+        showToast('Failed to export Excel', 'error');
+    }
+}
+
+// ============================================
+// Modal
+// ============================================
+function initModal() {
+    $('#closeModal').addEventListener('click', closeModal);
+    $('.modal-overlay').addEventListener('click', closeModal);
+    
+    $('#modalDownloadJson').addEventListener('click', () => {
+        if (AppState.currentResult) {
+            const noKK = AppState.currentResult.data.header?.no_kk || 'unknown';
+            downloadJson(AppState.currentResult.data, `kk_${noKK}.json`);
+        }
+    });
+    
+    $('#modalExportExcel').addEventListener('click', () => {
+        if (AppState.currentResult) {
+            exportSingleExcel(AppState.currentResult.data);
+        }
+    });
+    
+    $('#modalCopyJson').addEventListener('click', () => {
+        if (AppState.currentResult) {
+            navigator.clipboard.writeText(JSON.stringify(AppState.currentResult.data, null, 2))
+                .then(() => showToast('JSON copied to clipboard', 'success'))
+                .catch(() => showToast('Failed to copy', 'error'));
+        }
+    });
+    
+    // Close on escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
     });
 }
 
-// Reset Upload
-function resetUpload() {
-    currentFile = null;
-    resultData = null;
-    fileInput.value = '';
+function closeModal() {
+    $('#resultModal').classList.remove('active');
+    AppState.currentResult = null;
+}
+
+function exportSingleExcel(data) {
+    try {
+        const wb = XLSX.utils.book_new();
+        const header = data.header || {};
+        const members = data.anggota_keluarga || [];
+        
+        // Header sheet
+        const headerData = [
+            ['Informasi Kartu Keluarga', ''],
+            ['No. KK', header.no_kk || '-'],
+            ['Kepala Keluarga', header.kepala_keluarga || '-'],
+            ['Alamat', header.alamat || '-'],
+            ['RT/RW', `${header.rt || '-'}/${header.rw || '-'}`],
+            ['Desa/Kelurahan', header.desa || '-'],
+            ['Kecamatan', header.kecamatan || '-'],
+            ['Kabupaten/Kota', header.kabupaten_kota || '-'],
+            ['Provinsi', header.provinsi || '-'],
+            ['Kode Pos', header.kode_pos || '-']
+        ];
+        
+        const wsHeader = XLSX.utils.aoa_to_sheet(headerData);
+        wsHeader['!cols'] = [{ wch: 20 }, { wch: 40 }];
+        XLSX.utils.book_append_sheet(wb, wsHeader, 'Header');
+        
+        // Members sheet
+        const memberData = [
+            ['No', 'NIK', 'Nama Lengkap', 'Jenis Kelamin', 'Tempat Lahir', 'Tanggal Lahir',
+             'Agama', 'Pendidikan', 'Pekerjaan', 'Status Perkawinan', 'Status Keluarga',
+             'Kewarganegaraan', 'Nama Ayah', 'Nama Ibu']
+        ];
+        
+        members.forEach((m, i) => {
+            memberData.push([
+                i + 1, m.nik || '-', m.nama_lengkap || '-', m.jenis_kelamin || '-',
+                m.tempat_lahir || '-', m.tanggal_lahir || '-', m.agama || '-',
+                m.pendidikan || '-', m.jenis_pekerjaan || '-', m.status_perkawinan || '-',
+                m.status_keluarga || '-', m.kewarganegaraan || '-', m.nama_ayah || '-', m.nama_ibu || '-'
+            ]);
+        });
+        
+        const wsMembers = XLSX.utils.aoa_to_sheet(memberData);
+        wsMembers['!cols'] = [
+            { wch: 5 }, { wch: 18 }, { wch: 25 }, { wch: 12 }, { wch: 15 }, { wch: 12 },
+            { wch: 10 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 25 }, { wch: 25 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsMembers, 'Anggota Keluarga');
+        
+        const noKK = header.no_kk || 'unknown';
+        XLSX.writeFile(wb, `kk_${noKK}.xlsx`);
+        showToast('Excel exported successfully', 'success');
+        
+    } catch (error) {
+        console.error('Excel export error:', error);
+        showToast('Failed to export Excel', 'error');
+    }
+}
+
+// ============================================
+// Settings
+// ============================================
+function initSettings() {
+    const apiBaseUrl = $('#apiBaseUrl');
+    const pollingInterval = $('#pollingInterval');
+    const themeSelect = $('#themeSelect');
+    const autoSwitch = $('#autoSwitchResults');
     
-    hideSection(previewSection);
-    hideSection(processSection);
-    hideSection(resultsSection);
-    hideSection(errorSection);
-    showSection(uploadArea);
+    // Load saved values
+    apiBaseUrl.value = AppState.config.apiBaseUrl;
+    pollingInterval.value = AppState.config.pollingInterval;
+    themeSelect.value = AppState.config.theme;
+    autoSwitch.checked = AppState.config.autoSwitchResults;
+    
+    // Event handlers
+    apiBaseUrl.addEventListener('change', (e) => {
+        AppState.config.apiBaseUrl = e.target.value;
+        localStorage.setItem('apiBaseUrl', e.target.value);
+        showToast('API URL updated', 'success');
+    });
+    
+    pollingInterval.addEventListener('change', (e) => {
+        const value = Math.max(1000, Math.min(10000, parseInt(e.target.value)));
+        e.target.value = value;
+        AppState.config.pollingInterval = value;
+        localStorage.setItem('pollingInterval', value);
+        showToast('Polling interval updated', 'success');
+    });
+    
+    themeSelect.addEventListener('change', (e) => {
+        AppState.config.theme = e.target.value;
+        localStorage.setItem('theme', e.target.value);
+        applyTheme(e.target.value);
+    });
+    
+    autoSwitch.addEventListener('change', (e) => {
+        AppState.config.autoSwitchResults = e.target.checked;
+        localStorage.setItem('autoSwitchResults', e.target.checked);
+    });
 }
 
-// Error Handling
-function showError(message) {
-    errorMessage.textContent = message;
-    hideSection(uploadArea);
-    hideSection(previewSection);
-    hideSection(processSection);
-    hideSection(resultsSection);
-    showSection(errorSection);
-}
-
-// UI Helpers
-function showSection(element) {
-    element.style.display = 'block';
-}
-
-function hideSection(element) {
-    element.style.display = 'none';
+// ============================================
+// Utility Functions
+// ============================================
+function validateFile(file) {
+    const validTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    if (!validTypes.includes(file.type)) {
+        showToast(`Invalid file type: ${file.name}`, 'error');
+        return false;
+    }
+    
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+        showToast(`File too large: ${file.name} (max 10MB)`, 'error');
+        return false;
+    }
+    
+    return true;
 }
 
 function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return '0 B';
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
-function showToast(message) {
-    // Simple toast notification
+function createPDFPlaceholder() {
+    return 'data:image/svg+xml;base64,' + btoa(`
+        <svg width="150" height="100" xmlns="http://www.w3.org/2000/svg">
+            <rect width="150" height="100" fill="#f1f5f9" rx="8"/>
+            <text x="50%" y="45%" font-family="Arial" font-size="24" text-anchor="middle" fill="#64748b">📄</text>
+            <text x="50%" y="70%" font-family="Arial" font-size="12" text-anchor="middle" fill="#64748b">PDF</text>
+        </svg>
+    `);
+}
+
+function downloadJson(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ============================================
+// Toast Notifications
+// ============================================
+function showToast(message, type = 'info') {
+    const container = $('#toastContainer');
+    const icons = {
+        success: '✅',
+        error: '❌',
+        warning: '⚠️',
+        info: 'ℹ️'
+    };
+    
     const toast = document.createElement('div');
-    toast.style.cssText = `
-        position: fixed;
-        bottom: 30px;
-        right: 30px;
-        background: #10B981;
-        color: white;
-        padding: 15px 25px;
-        border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        z-index: 1000;
-        animation: slideIn 0.3s ease;
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <span class="toast-icon">${icons[type]}</span>
+        <span class="toast-message">${message}</span>
+        <button class="toast-close" onclick="this.parentElement.remove()">×</button>
     `;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-
+    
+    container.appendChild(toast);
+    
+    // Auto remove after 4 seconds
     setTimeout(() => {
-        toast.style.animation = 'slideOut 0.3s ease';
-        setTimeout(() => document.body.removeChild(toast), 300);
-    }, 3000);
+        if (toast.parentElement) {
+            toast.style.animation = 'slideIn 0.3s ease reverse';
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 4000);
 }
 
-// Add CSS for toast animation
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideIn {
-        from {
-            transform: translateX(400px);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-    @keyframes slideOut {
-        from {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(400px);
-            opacity: 0;
-        }
-    }
-`;
-document.head.appendChild(style);
-
-// Export to Excel Function
-function exportToExcel() {
-    if (!resultData) {
-        showToast('❌ Tidak ada data untuk diexport', 'error');
-        return;
-    }
-
-    try {
-        // Create workbook
-        const wb = XLSX.utils.book_new();
-
-        // Sheet 1: Header KK (use pick() for robust keys)
-
-        const hdr = resultData.header || {};
-        const headerData = [
-            ['Informasi Kartu Keluarga', ''],
-            ['No. KK', pick(hdr, ['no_kk', 'noKK'], '-')],
-            ['Kepala Keluarga', pick(hdr, ['kepala_keluarga', 'kepala_keluarga'], '-')],
-            ['Alamat', pick(hdr, ['alamat', 'address'], '-')],
-            ['RT/RW', `${pick(hdr, ['rt'], '-')}/${pick(hdr, ['rw'], '-')}`],
-            ['Desa/Kelurahan', pick(hdr, ['desa', 'desa_kelurahan', 'desa_kel'], '-')],
-            ['Kecamatan', pick(hdr, ['kecamatan'], '-')],
-            ['Kabupaten/Kota', pick(hdr, ['kabupaten_kota', 'kabupaten'], '-')],
-            ['Provinsi', pick(hdr, ['provinsi'], '-')],
-            ['Kode Pos', pick(hdr, ['kode_pos', 'kodepos', 'postal_code'], '-')],
-            ['Tanggal Pembuatan', pick(hdr, ['tanggal_pembuatan'], '-')]
-        ];
-        const wsHeader = XLSX.utils.aoa_to_sheet(headerData);
-        
-        // Set column widths
-        wsHeader['!cols'] = [
-            { wch: 25 },
-            { wch: 40 }
-        ];
-        
-        XLSX.utils.book_append_sheet(wb, wsHeader, 'Header KK');
-
-        // Sheet 2: Anggota Keluarga
-        if ((resultData.anggota_keluarga && resultData.anggota_keluarga.length > 0) || (resultData.anggota && resultData.anggota.length > 0)) {
-            const members = resultData.anggota_keluarga || resultData.anggota || [];
-            
-            // Create headers
-            const memberHeaders = [
-                'No',
-                'NIK',
-                'Nama Lengkap',
-                'Jenis Kelamin',
-                'Tempat Lahir',
-                'Tanggal Lahir',
-                'Agama',
-                'Pendidikan',
-                'Pekerjaan',
-                'Status Perkawinan',
-                'Status Keluarga',
-                'Kewarganegaraan',
-                'Nama Ayah',
-                'Nama Ibu',
-                'No. Paspor',
-                'No. KITAP'
-            ];
-
-            // Create data rows
-            const memberRows = members.map((member, index) => [
-                index + 1,
-                member.nik || '-',
-                member.nama_lengkap || '-',
-                member.jenis_kelamin || '-',
-                member.tempat_lahir || '-',
-                member.tanggal_lahir || '-',
-                member.agama || '-',
-                member.pendidikan || '-',
-                pick(member, ['jenis_pekerjaan', 'pekerjaan', 'jenis_pekerjaan'], '-'),
-                member.status_perkawinan || '-',
-                member.status_keluarga || '-',
-                member.kewarganegaraan || '-',
-                member.nama_ayah || '-',
-                member.nama_ibu || '-',
-                member.no_paspor || '-',
-                member.no_KITAP || '-'
-            ]);
-
-            // Combine headers and data
-            const memberData = [memberHeaders, ...memberRows];
-            const wsMembers = XLSX.utils.aoa_to_sheet(memberData);
-            
-            // Set column widths
-            wsMembers['!cols'] = [
-                { wch: 5 },   // No
-                { wch: 18 },  // NIK
-                { wch: 25 },  // Nama
-                { wch: 12 },  // Gender
-                { wch: 20 },  // Tempat Lahir
-                { wch: 12 },  // Tanggal Lahir
-                { wch: 12 },  // Agama
-                { wch: 20 },  // Pendidikan
-                { wch: 25 },  // Pekerjaan
-                { wch: 15 },  // Status Kawin
-                { wch: 18 },  // Status Keluarga
-                { wch: 15 },  // Kewarganegaraan
-                { wch: 25 },  // Ayah
-                { wch: 25 },  // Ibu
-                { wch: 12 },  // Paspor
-                { wch: 12 }   // KITAP
-            ];
-            
-            XLSX.utils.book_append_sheet(wb, wsMembers, 'Anggota Keluarga');
-        }
-
-        // Sheet 3: Metadata
-        const md = resultData.metadata || {};
-        const metadataData = [
-            ['Metadata Ekstraksi', ''],
-            ['Waktu Proses', pick(md, ['processing_timestamp', 'processing_time', 'timestamp'], '-')],
-            ['Model YOLO', pick(md, ['model_version_yolo'], '-')],
-            ['Model U-Net', pick(md, ['model_version_unet'], '-')],
-            ['Model VLM', pick(md, ['model_version_vlm', 'model_version_vlm_local'], '-')],
-            ['File Sumber', pick(md, ['source_file', 'source_filename'], '-')]
-        ];
-        const wsMetadata = XLSX.utils.aoa_to_sheet(metadataData);
-        wsMetadata['!cols'] = [
-            { wch: 25 },
-            { wch: 50 }
-        ];
-        XLSX.utils.book_append_sheet(wb, wsMetadata, 'Metadata');
-
-        // Generate filename
-        const noKK = resultData.header?.no_kk || 'KK';
-        const timestamp = new Date().toISOString().slice(0, 10);
-        const filename = `KK_${noKK}_${timestamp}.xlsx`;
-
-        // Save file
-        XLSX.writeFile(wb, filename);
-        
-        showToast('✅ Excel berhasil diexport!', 'success');
-        
-    } catch (error) {
-        console.error('Export Excel error:', error);
-        showToast('❌ Gagal export Excel: ' + error.message, 'error');
-    }
-}
-
-// Download JSON Function (existing)
-function downloadJson() {
-    if (!resultData) {
-        showToast('❌ Tidak ada data untuk didownload', 'error');
-        return;
-    }
-
-    try {
-        const dataStr = JSON.stringify(resultData, null, 2);
-        const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(dataBlob);
-        const link = document.createElement('a');
-        
-        const noKK = resultData.header?.no_kk || 'KK';
-        const timestamp = new Date().toISOString().slice(0, 10);
-        link.href = url;
-        link.download = `KK_${noKK}_${timestamp}.json`;
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        
-        showToast('✅ JSON berhasil didownload!', 'success');
-    } catch (error) {
-        showToast('❌ Gagal download JSON', 'error');
-    }
-}
-
-// Copy JSON Function (existing)
-function copyJson() {
-    if (!resultData) {
-        showToast('❌ Tidak ada data untuk dicopy', 'error');
-        return;
-    }
-
-    try {
-        const dataStr = JSON.stringify(resultData, null, 2);
-        navigator.clipboard.writeText(dataStr).then(() => {
-            showToast('✅ JSON berhasil dicopy ke clipboard!', 'success');
-        }).catch(() => {
-            showToast('❌ Gagal copy JSON', 'error');
-        });
-    } catch (error) {
-        showToast('❌ Gagal copy JSON', 'error');
-    }
-}
+// Make functions globally available
+window.removeFileFromBatch = removeFileFromBatch;
+window.showResultDetail = showResultDetail;
+window.deleteJob = deleteJob;
