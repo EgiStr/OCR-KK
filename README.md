@@ -269,29 +269,13 @@ Contributions are welcome! Please:
 3. Make your changes with tests
 4. Submit a pull request
 
-## 📄 License
-
-[Specify License]
 
 ## 👥 Authors
 
-[Your Name/Team]
+EgiStr
 
 ## 🙏 Acknowledgments
 
 - YOLO: Ultralytics team
 - Gemini: Google AI
 - U-Net: Original paper by Ronneberger et al.
-
-## 📞 Support
-
-For issues and questions:
-- GitHub Issues: [link]
-- Email: [contact email]
-- Documentation: [link]
-
----
-
-**Version**: 2.1  
-**Last Updated**: November 1, 2025  
-**Status**: Development
